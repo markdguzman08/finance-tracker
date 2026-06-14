@@ -690,7 +690,7 @@ function renderAdd() {
 
             <div class="form-group">
                 <label class="form-label">Date</label>
-                <input type="date" class="form-input" value="${form.date}" onchange="form.date=this.value">
+                <input id="f-date" type="date" class="form-input" value="${form.date}">
             </div>
 
             <div class="form-group">
@@ -747,7 +747,18 @@ function renderAdd() {
         </div>`);
 }
 
-function setType(t) { form.type = t; form.category = ''; renderAdd(); }
+function setType(t) {
+    // Save current DOM values before re-render
+    form.account         = document.getElementById('f-account')?.value     || form.account;
+    form.note            = document.getElementById('f-note')?.value        || form.note;
+    form.amount          = document.getElementById('f-amount')?.value      || form.amount;
+    form.subcategory     = document.getElementById('f-subcategory')?.value || form.subcategory;
+    form.transferAccount = document.getElementById('f-transfer')?.value    || form.transferAccount;
+    form.date            = document.getElementById('f-date')?.value        || form.date;
+    form.type = t;
+    form.category = '';
+    renderAdd();
+}
 
 async function saveTransaction(btn) {
     const isTransfer = form.type === 'Transfer-In' || form.type === 'Transfer-Out';
@@ -759,7 +770,7 @@ async function saveTransaction(btn) {
     const note            = (document.getElementById('f-note')?.value        || '').trim();
     const amount          = (document.getElementById('f-amount')?.value      || '').trim();
     const transferAccount = (document.getElementById('f-transfer')?.value    || '').trim();
-    const date            = form.date;
+    const date            = document.getElementById('f-date')?.value || form.date;
 
     if (!account)                               { showToast('Please select an account'); return; }
     if (!amount || parseFloat(amount) <= 0)     { showToast('Please enter a valid amount'); return; }
