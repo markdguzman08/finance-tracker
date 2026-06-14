@@ -8,7 +8,6 @@
     <meta name="theme-color" content="#1E40AF">
     <title>Finance Tracker</title>
     <link rel="manifest" href="manifest.json">
-    <script src="https://accounts.google.com/gsi/client" async></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -37,27 +36,27 @@
             flex-direction: column;
         }
 
-        /* ── LOGIN ── */
-        #login-screen {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100dvh;
+        /* ── SETUP SCREEN ── */
+        #setup-screen {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100dvh; padding: 32px 24px;
             background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
             color: white;
-            padding: 24px;
         }
-        .login-logo { font-size: 56px; margin-bottom: 16px; }
-        .login-title { font-size: 30px; font-weight: 800; margin-bottom: 6px; }
-        .login-subtitle { font-size: 14px; opacity: 0.8; margin-bottom: 52px; text-align: center; line-height: 1.5; }
-        .sign-in-btn {
-            display: flex; align-items: center; gap: 12px;
-            background: white; color: #1E293B; border: none;
-            border-radius: 14px; padding: 15px 28px;
-            font-size: 16px; font-weight: 700; cursor: pointer;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+        .setup-logo  { font-size: 56px; margin-bottom: 16px; }
+        .setup-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+        .setup-sub   { font-size: 14px; opacity: 0.85; margin-bottom: 32px; text-align: center; line-height: 1.6; }
+        .setup-input {
+            width: 100%; padding: 14px 16px; border-radius: 12px; border: none;
+            font-size: 13px; margin-bottom: 12px; outline: none; color: var(--text);
         }
+        .setup-btn {
+            width: 100%; padding: 15px; background: white; color: var(--primary);
+            border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+            cursor: pointer; margin-bottom: 16px;
+        }
+        .setup-help { font-size: 12px; opacity: 0.75; text-align: center; line-height: 1.6; }
 
         /* ── APP SHELL ── */
         #app { display: none; flex-direction: column; height: 100dvh; }
@@ -81,13 +80,11 @@
         .month-selector {
             display: flex; align-items: center; justify-content: center;
             gap: 12px; padding: 10px 20px;
-            background: var(--card); border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
+            background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0;
         }
         .month-btn {
             background: none; border: none; font-size: 22px;
-            cursor: pointer; color: var(--primary); padding: 4px 10px;
-            border-radius: 8px;
+            cursor: pointer; color: var(--primary); padding: 4px 10px; border-radius: 8px;
         }
         .month-btn:active { background: #EFF6FF; }
         .month-label { font-size: 15px; font-weight: 700; min-width: 130px; text-align: center; }
@@ -139,17 +136,17 @@
             background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
             border-radius: 16px; padding: 18px; color: white;
         }
-        .net-label { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
+        .net-label  { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
         .net-amount { font-size: 34px; font-weight: 800; letter-spacing: -0.5px; }
-        .net-sub { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+        .net-sub    { font-size: 12px; opacity: 0.7; margin-top: 4px; }
 
         /* ── SUMMARY GRID ── */
         .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 16px 0; }
         .summary-card { background: var(--card); border-radius: 16px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .summary-icon { font-size: 22px; margin-bottom: 8px; }
-        .summary-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .summary-icon   { font-size: 22px; margin-bottom: 8px; }
+        .summary-label  { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
         .summary-amount { font-size: 19px; font-weight: 800; }
-        .summary-amount.income { color: var(--income); }
+        .summary-amount.income  { color: var(--income); }
         .summary-amount.expense { color: var(--expense); }
 
         /* ── TRANSACTION ITEM ── */
@@ -163,16 +160,16 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 18px; flex-shrink: 0;
         }
-        .tx-icon.income { background: #D1FAE5; }
+        .tx-icon.income  { background: #D1FAE5; }
         .tx-icon.expense { background: #FEE2E2; }
-        .tx-icon.transfer { background: #EDE9FE; }
+        .tx-icon.transfer{ background: #EDE9FE; }
         .tx-info { flex: 1; min-width: 0; }
         .tx-category { font-size: 14px; font-weight: 600; }
-        .tx-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tx-meta  { font-size: 11px; color: var(--text-secondary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .tx-right { text-align: right; flex-shrink: 0; }
         .tx-amount { font-size: 14px; font-weight: 700; }
-        .tx-amount.income { color: var(--income); }
-        .tx-amount.expense { color: var(--expense); }
+        .tx-amount.income   { color: var(--income); }
+        .tx-amount.expense  { color: var(--expense); }
         .tx-amount.transfer { color: var(--transfer); }
         .tx-date { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
 
@@ -180,9 +177,8 @@
         .chart-container { position: relative; height: 190px; margin: 4px 0 8px; }
         .legend-item { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
         .legend-left { display: flex; align-items: center; gap: 8px; }
-        .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        .legend-name { font-size: 13px; }
-        .legend-pct { font-size: 11px; color: var(--text-secondary); }
+        .legend-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .legend-name   { font-size: 13px; }
         .legend-amount { font-size: 13px; font-weight: 700; color: var(--expense); }
 
         /* ── ACCOUNT ITEM ── */
@@ -191,14 +187,13 @@
             padding: 12px 0; border-bottom: 1px solid var(--border);
         }
         .account-item:last-child { border-bottom: none; }
-        .account-name { font-size: 14px; font-weight: 600; }
-        .account-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+        .account-name    { font-size: 14px; font-weight: 600; }
         .account-balance { font-size: 16px; font-weight: 800; }
 
         /* ── FORM ── */
         .form-section { padding: 16px; }
-        .form-group { margin-bottom: 15px; }
-        .form-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 7px; display: block; }
+        .form-group   { margin-bottom: 15px; }
+        .form-label   { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 7px; display: block; }
         .form-input, .form-select {
             width: 100%; padding: 13px 16px;
             border: 1.5px solid var(--border); border-radius: 12px;
@@ -221,9 +216,9 @@
             border-radius: 10px; background: none; font-size: 11px;
             font-weight: 700; cursor: pointer; text-align: center; color: var(--text-secondary);
         }
-        .type-btn.active-expense  { border-color: var(--expense); background: #FEE2E2; color: var(--expense); }
-        .type-btn.active-income   { border-color: var(--income);  background: #D1FAE5; color: var(--income);  }
-        .type-btn.active-transfer { border-color: var(--transfer);background: #EDE9FE; color: var(--transfer);}
+        .type-btn.active-expense  { border-color: var(--expense);  background: #FEE2E2; color: var(--expense);  }
+        .type-btn.active-income   { border-color: var(--income);   background: #D1FAE5; color: var(--income);   }
+        .type-btn.active-transfer { border-color: var(--transfer); background: #EDE9FE; color: var(--transfer); }
 
         /* ── SUBMIT ── */
         .submit-btn {
@@ -232,8 +227,8 @@
             font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 6px;
             display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .submit-btn:active { opacity: 0.88; }
-        .submit-btn:disabled { opacity: 0.6; }
+        .submit-btn:active   { opacity: 0.88; }
+        .submit-btn:disabled { opacity: 0.6;  }
 
         /* ── RECORDS ── */
         .records-filter { padding: 0 16px 10px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
@@ -254,22 +249,19 @@
         .search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 14px; }
 
         /* ── SETTINGS ── */
-        .settings-section { margin: 0 16px 16px; }
+        .settings-section       { margin: 0 16px 16px; }
         .settings-section-title { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; padding: 16px 0 8px; }
-        .settings-card { background: var(--card); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .settings-item {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 15px 16px; border-bottom: 1px solid var(--border); cursor: pointer;
-        }
+        .settings-card   { background: var(--card); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .settings-item   { display: flex; justify-content: space-between; align-items: center; padding: 15px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
         .settings-item:last-child { border-bottom: none; }
-        .settings-label { font-size: 15px; font-weight: 500; }
-        .settings-value { font-size: 14px; color: var(--text-secondary); }
+        .settings-label  { font-size: 15px; font-weight: 500; }
+        .settings-value  { font-size: 14px; color: var(--text-secondary); }
 
         /* ── MISC ── */
         .view-header { padding: 16px 16px 4px; font-size: 22px; font-weight: 800; }
         .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
-        .empty-icon { font-size: 44px; margin-bottom: 10px; }
-        .danger-btn {
+        .empty-icon  { font-size: 44px; margin-bottom: 10px; }
+        .danger-btn  {
             width: calc(100% - 32px); margin: 8px 16px 24px;
             padding: 14px; background: #FEE2E2; color: var(--expense);
             border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
@@ -297,37 +289,33 @@
             border-top-color: white; border-radius: 50%;
             animation: spin 0.7s linear infinite; display: inline-block;
         }
-
-        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-<!-- ════════════════════════════════════════ LOGIN ══ -->
-<div id="login-screen">
-    <div class="login-logo">💰</div>
-    <div class="login-title">Finance Tracker</div>
-    <div class="login-subtitle">Track your income &amp; expenses<br>synced with Google Sheets</div>
-    <button class="sign-in-btn" onclick="signIn()">
-        <svg width="20" height="20" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-        </svg>
-        Sign in with Google
-    </button>
+<!-- ═══════════════════════ SETUP SCREEN ═══ -->
+<div id="setup-screen">
+    <div class="setup-logo">💰</div>
+    <div class="setup-title">Finance Tracker</div>
+    <div class="setup-sub">Paste your Google Apps Script URL below to connect to your sheet.</div>
+    <input class="setup-input" id="script-url-input" type="url"
+           placeholder="https://script.google.com/macros/s/...">
+    <button class="setup-btn" onclick="saveScriptUrl()">Connect to Google Sheet</button>
+    <div class="setup-help">
+        Open your Google Sheet → Extensions → Apps Script<br>
+        → Deploy → New deployment → Web app → Copy URL
+    </div>
 </div>
 
-<!-- ════════════════════════════════════════ APP ════ -->
+<!-- ═══════════════════════ APP ═══════════ -->
 <div id="app">
     <div class="header">
         <div class="header-top">
             <div>
                 <div class="header-title" id="header-title">Dashboard</div>
-                <div class="header-subtitle" id="header-subtitle">Finance Tracker</div>
+                <div class="header-subtitle">Finance Tracker</div>
             </div>
-            <button class="avatar-btn" onclick="navigate('settings')">👤</button>
+            <button class="avatar-btn" onclick="navigate('settings')">⚙️</button>
         </div>
     </div>
 
@@ -351,27 +339,24 @@
             <span class="nav-icon">🏦</span><span>Accounts</span>
         </button>
         <button class="nav-item" id="nav-settings" onclick="navigate('settings')">
-            <span class="nav-icon">⚙️</span><span>Settings</span>
+            <span class="nav-icon">☰</span><span>Settings</span>
         </button>
     </nav>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<!-- ════════════════════════════════════════ SCRIPT ═ -->
+<!-- ═══════════════════════ SCRIPT ════════ -->
 <script>
 // ─── CONFIG ──────────────────────────────────────────
-const CLIENT_ID = '395990245737-459842am2rilp1eeotcojocoq1q6o33i.apps.googleusercontent.com';
-const SHEET_ID  = '1dbhN4OM8UIbu617Xe16833Uf0XxlkSpMcSox0ER-x7g';
-const SCOPE     = 'https://www.googleapis.com/auth/spreadsheets';
-const MONTHS    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#14B8A6'];
+const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CHART_COLORS= ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#14B8A6'];
+
+let SCRIPT_URL = '';
 
 // ─── STATE ───────────────────────────────────────────
-let accessToken  = null;
-let tokenClient  = null;
-let allData      = [];
-let currentView  = 'dashboard';
+let allData       = [];
+let currentView   = 'dashboard';
 let selectedMonth = new Date();
 let categoryChart = null;
 let recordsFilter = 'all';
@@ -394,129 +379,78 @@ function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(set
 
 let form = resetForm();
 function resetForm(keepAccount) {
-    return {
-        date: todayInput(), type: 'Exp.',
-        account: keepAccount || '',
-        category: '', subcategory: '', note: '', amount: '',
-        transferAccount: ''
-    };
+    return { date: todayInput(), type: 'Exp.', account: keepAccount || '', category: '', subcategory: '', note: '', amount: '', transferAccount: '' };
 }
 
-// ─── AUTH ────────────────────────────────────────────
+// ─── INIT ────────────────────────────────────────────
 window.addEventListener('load', () => {
     updateMonthLabel();
-    // Check for a stored, non-expired token
-    const token   = localStorage.getItem('ft_token');
-    const expiry  = parseInt(localStorage.getItem('ft_expiry') || '0');
-    if (token && Date.now() < expiry) {
-        accessToken = token;
+    const savedUrl = localStorage.getItem('ft_script_url');
+    if (savedUrl) {
+        SCRIPT_URL = savedUrl;
         showApp();
         loadData();
-    } else if (localStorage.getItem('ft_signed_in')) {
-        // Token expired but user has signed in before — try silent re-auth
-        waitForGoogle(silentSignIn);
+    } else {
+        document.getElementById('setup-screen').style.display = 'flex';
+        document.getElementById('app').style.display = 'none';
     }
 });
 
-function waitForGoogle(fn, tries = 0) {
-    if (window.google) { fn(); return; }
-    if (tries < 20) setTimeout(() => waitForGoogle(fn, tries + 1), 300);
-}
-
-function silentSignIn() {
-    try {
-        const tc = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID, scope: SCOPE,
-            hint: localStorage.getItem('ft_email') || '',
-            prompt: '',
-            callback: (resp) => {
-                if (resp.error) return; // show login screen silently
-                onToken(resp);
-            }
-        });
-        tc.requestAccessToken({ prompt: '' });
-    } catch(e) {}
-}
-
-function signIn() {
-    if (!window.google) { showToast('Google library not loaded yet. Try again.'); return; }
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID, scope: SCOPE,
-        callback: (resp) => {
-            if (resp.error) { showToast('Sign-in failed: ' + resp.error); return; }
-            onToken(resp);
-        }
-    });
-    tokenClient.requestAccessToken();
-}
-
-function onToken(resp) {
-    accessToken = resp.access_token;
-    // Store token + expiry (expires_in is in seconds, subtract 60s buffer)
-    const expiry = Date.now() + (resp.expires_in - 60) * 1000;
-    localStorage.setItem('ft_token',     accessToken);
-    localStorage.setItem('ft_expiry',    expiry.toString());
-    localStorage.setItem('ft_signed_in', '1');
+function saveScriptUrl() {
+    const url = document.getElementById('script-url-input').value.trim();
+    if (!url.startsWith('https://script.google.com')) {
+        showToast('Please paste a valid Apps Script URL');
+        return;
+    }
+    localStorage.setItem('ft_script_url', url);
+    SCRIPT_URL = url;
     showApp();
     loadData();
 }
 
-function signOut() {
-    if (accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
-    accessToken = null;
-    localStorage.removeItem('ft_token');
-    localStorage.removeItem('ft_expiry');
-    localStorage.removeItem('ft_signed_in');
-    localStorage.removeItem('ft_email');
-    allData = [];
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('app').style.display = 'none';
-}
-
 function showApp() {
-    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
     navigate('dashboard');
 }
 
 // ─── API ─────────────────────────────────────────────
-async function apiGet(range) {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}`;
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (r.status === 401) { signIn(); throw new Error('Token expired'); }
-    if (!r.ok) throw new Error('API error ' + r.status);
-    return r.json();
+async function apiGet() {
+    const url = SCRIPT_URL + '?t=' + Date.now();
+    const r = await fetch(url, { redirect: 'follow' });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data;
 }
 
-async function apiAppend(range, values) {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-    const r = await fetch(url, {
+async function apiAppend(row) {
+    const r = await fetch(SCRIPT_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values })
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ row })
     });
-    if (r.status === 401) { signIn(); throw new Error('Token expired'); }
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Save failed'); }
-    return r.json();
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data;
 }
 
 async function loadData() {
-    showContent('<div class="loading" style="padding:60px;text-align:center;color:var(--text-secondary)">Loading data…</div>');
+    showContent('<div style="padding:60px;text-align:center;color:var(--text-secondary)">Loading…</div>');
     try {
-        const data = await apiGet(`${settings.sheetTab}!A2:H`);
+        const data = await apiGet();
         allData = (data.values || []).map(r => ({
-            period:          r[0] || '',
-            account:         r[1] || '',
-            category:        r[2] || '',
-            subcategory:     r[3] || '',
-            note:            r[4] || '',
+            period:          String(r[0] || ''),
+            account:         String(r[1] || ''),
+            category:        String(r[2] || ''),
+            subcategory:     String(r[3] || ''),
+            note:            String(r[4] || ''),
             amount:          parseFloat(r[5]) || 0,
-            type:            r[6] || '',
-            transferAccount: r[7] || ''
+            type:            String(r[6] || ''),
+            transferAccount: String(r[7] || '')
         }));
         renderCurrentView();
     } catch(e) {
-        if (e.message !== 'Token expired') showToast('Error loading data: ' + e.message);
+        showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
     }
 }
 
@@ -531,8 +465,8 @@ function parseSheetDate(str) {
     if (isNaN(d) || m === undefined || isNaN(y)) return null;
     return new Date(y, m, d);
 }
-function toSheetDate(dateInputVal) {
-    const d = new Date(dateInputVal + 'T00:00:00');
+function toSheetDate(val) {
+    const d = new Date(val + 'T00:00:00');
     return `${String(d.getDate()).padStart(2,'0')}-${MONTHS[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
 }
 function todayInput() {
@@ -541,14 +475,14 @@ function todayInput() {
 }
 
 // ─── DATA HELPERS ─────────────────────────────────────
-function monthRows(data) {
-    return data.filter(r => {
+function monthRows() {
+    return allData.filter(r => {
         const d = parseSheetDate(r.period);
         return d && d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
     });
 }
 function monthStats() {
-    const rows = monthRows(allData);
+    const rows = monthRows();
     let income = 0, expense = 0;
     rows.forEach(r => {
         if (r.type === 'Income') income += r.amount;
@@ -562,16 +496,16 @@ function accountBalances() {
     allData.forEach(r => {
         if (!r.account) return;
         if (!bal.hasOwnProperty(r.account)) bal[r.account] = 0;
-        if (r.type === 'Income' || r.type === 'Transfer-In')  bal[r.account] += r.amount;
-        if (r.type === 'Exp.'   || r.type === 'Transfer-Out') bal[r.account] -= r.amount;
+        if (r.type === 'Income'       || r.type === 'Transfer-In')  bal[r.account] += r.amount;
+        if (r.type === 'Exp.'         || r.type === 'Transfer-Out') bal[r.account] -= r.amount;
     });
     return bal;
 }
 function categoryBreakdown() {
-    const rows = monthRows(allData);
+    const rows = monthRows();
     const bd = {};
     rows.forEach(r => { if (r.type === 'Exp.' && r.category) bd[r.category] = (bd[r.category]||0) + r.amount; });
-    return Object.entries(bd).sort((a,b) => b[1]-a[1]).slice(0,10);
+    return Object.entries(bd).sort((a,b)=>b[1]-a[1]).slice(0,10);
 }
 function fmt(n) { return n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -579,8 +513,8 @@ function fmt(n) { return n.toLocaleString('en-PH', { minimumFractionDigits: 2, m
 function navigate(view) {
     currentView = view;
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    const navIds = { dashboard:'nav-dashboard', records:'nav-records', accounts:'nav-accounts', settings:'nav-settings' };
-    if (navIds[view]) document.getElementById(navIds[view]).classList.add('active');
+    const ids = { dashboard:'nav-dashboard', records:'nav-records', accounts:'nav-accounts', settings:'nav-settings' };
+    if (ids[view]) document.getElementById(ids[view]).classList.add('active');
     const showMonth = view === 'dashboard' || view === 'records';
     document.getElementById('month-selector').style.display = showMonth ? 'flex' : 'none';
     const titles = { dashboard:'Dashboard', records:'Records', add:'Add Transaction', accounts:'Accounts', settings:'Settings' };
@@ -589,11 +523,11 @@ function navigate(view) {
 }
 function showContent(html) { document.getElementById('content').innerHTML = html; }
 function renderCurrentView() {
-    if (currentView === 'dashboard') renderDashboard();
-    else if (currentView === 'records') renderRecords();
-    else if (currentView === 'add') renderAdd();
-    else if (currentView === 'accounts') renderAccounts();
-    else if (currentView === 'settings') renderSettings();
+    if      (currentView === 'dashboard') renderDashboard();
+    else if (currentView === 'records')   renderRecords();
+    else if (currentView === 'add')       renderAdd();
+    else if (currentView === 'accounts')  renderAccounts();
+    else if (currentView === 'settings')  renderSettings();
 }
 
 // ─── MONTH SELECTOR ───────────────────────────────────
@@ -651,7 +585,7 @@ function renderDashboard() {
         <div class="card" style="margin-bottom:16px">
             <div class="card-title">Recent Transactions</div>
             ${recent.length ? recent.map(txHTML).join('') : '<div class="empty-state"><div class="empty-icon">📭</div><div>No transactions this month</div></div>'}
-            ${rows.length > 5 ? `<button class="see-all-btn" onclick="navigate('records')">View all ${rows.length} transactions →</button>` : ''}
+            ${rows.length > 5 ? `<button class="see-all-btn" onclick="navigate('records')">View all ${rows.length} →</button>` : ''}
         </div>
     `);
 
@@ -684,14 +618,12 @@ function txHTML(tx) {
     const cls  = isIncome ? 'income' : isTransfer ? 'transfer' : 'expense';
     const icon = isIncome ? '💚' : isTransfer ? '🔄' : '🔴';
     const sign = isIncome ? '+' : isTransfer ? '' : '-';
-    const label = tx.category || tx.type;
-    const sub   = [tx.note, tx.account].filter(Boolean).join(' · ');
     return `
         <div class="transaction-item">
             <div class="tx-icon ${cls}">${icon}</div>
             <div class="tx-info">
-                <div class="tx-category">${label}</div>
-                <div class="tx-meta">${sub}</div>
+                <div class="tx-category">${tx.category || tx.type}</div>
+                <div class="tx-meta">${[tx.note, tx.account].filter(Boolean).join(' · ')}</div>
             </div>
             <div class="tx-right">
                 <div class="tx-amount ${cls}">${sign}₱${fmt(tx.amount)}</div>
@@ -702,7 +634,7 @@ function txHTML(tx) {
 
 // ─── RECORDS ──────────────────────────────────────────
 function renderRecords() {
-    let rows = monthRows(allData);
+    let rows = monthRows();
     if (recordsFilter === 'income')   rows = rows.filter(r => r.type === 'Income');
     if (recordsFilter === 'expense')  rows = rows.filter(r => r.type === 'Exp.');
     if (recordsFilter === 'transfer') rows = rows.filter(r => r.type.includes('Transfer'));
@@ -740,14 +672,9 @@ function renderAdd() {
     const isTransfer = form.type === 'Transfer-In' || form.type === 'Transfer-Out';
     const cats = form.type === 'Income' ? settings.incomeCategories
                : form.type === 'Exp.'   ? settings.expenseCategories : [];
-
-    const typeClass = (t) => {
-        if (t === form.type) {
-            if (t === 'Income') return 'active-income';
-            if (t === 'Exp.')   return 'active-expense';
-            return 'active-transfer';
-        }
-        return '';
+    const tc = (t) => {
+        if (t !== form.type) return '';
+        return t === 'Income' ? 'active-income' : t === 'Exp.' ? 'active-expense' : 'active-transfer';
     };
 
     showContent(`
@@ -756,7 +683,7 @@ function renderAdd() {
                 <label class="form-label">Type</label>
                 <div class="type-selector">
                     ${[['Exp.','Expense'],['Income','Income'],['Transfer-In','Trans. In'],['Transfer-Out','Trans. Out']].map(([v,l])=>`
-                        <button class="type-btn ${typeClass(v)}" onclick="setType('${v}')">${l}</button>`).join('')}
+                        <button class="type-btn ${tc(v)}" onclick="setType('${v}')">${l}</button>`).join('')}
                 </div>
             </div>
 
@@ -810,8 +737,7 @@ function renderAdd() {
                 <label class="form-label">Amount (₱)</label>
                 <input type="number" class="form-input" placeholder="0.00"
                     value="${form.amount}" step="0.01" min="0" inputmode="decimal"
-                    onchange="form.amount=this.value"
-                    style="font-size:22px;font-weight:800">
+                    onchange="form.amount=this.value" style="font-size:22px;font-weight:800">
             </div>
 
             <button class="submit-btn" id="save-btn" onclick="saveTransaction(this)">
@@ -824,27 +750,23 @@ function setType(t) { form.type = t; form.category = ''; renderAdd(); }
 
 async function saveTransaction(btn) {
     const isTransfer = form.type === 'Transfer-In' || form.type === 'Transfer-Out';
-    if (!form.account)                              { showToast('Please select an account'); return; }
-    if (!form.amount || parseFloat(form.amount)<=0){ showToast('Please enter a valid amount'); return; }
-    if (!isTransfer && !form.category)             { showToast('Please select a category'); return; }
+    if (!form.account)                               { showToast('Please select an account'); return; }
+    if (!form.amount || parseFloat(form.amount) <= 0){ showToast('Please enter a valid amount'); return; }
+    if (!isTransfer && !form.category)               { showToast('Please select a category'); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Saving…';
 
     try {
         const row = [
-            toSheetDate(form.date),
-            form.account,
+            toSheetDate(form.date), form.account,
             isTransfer ? '' : form.category,
             isTransfer ? '' : form.subcategory,
-            form.note,
-            parseFloat(form.amount),
-            form.type,
+            form.note, parseFloat(form.amount), form.type,
             isTransfer ? form.transferAccount : ''
         ];
-        await apiAppend(`${settings.sheetTab}!A:H`, [row]);
+        await apiAppend(row);
 
-        // Add to local cache
         allData.push({
             period: toSheetDate(form.date), account: form.account,
             category: isTransfer ? '' : form.category,
@@ -853,8 +775,7 @@ async function saveTransaction(btn) {
             type: form.type, transferAccount: isTransfer ? form.transferAccount : ''
         });
 
-        const kept = form.account;
-        form = resetForm(kept);
+        form = resetForm(form.account);
         showToast('✅ Saved!');
         navigate('dashboard');
     } catch(e) {
@@ -866,19 +787,17 @@ async function saveTransaction(btn) {
 
 // ─── ACCOUNTS ─────────────────────────────────────────
 function renderAccounts() {
-    const bal = accountBalances();
-    const sorted = Object.entries(bal).sort((a,b) => b[1]-a[1]);
-    const total = sorted.reduce((s,[,v])=>s+v, 0);
+    const bal    = accountBalances();
+    const sorted = Object.entries(bal).sort((a,b)=>b[1]-a[1]);
+    const total  = sorted.reduce((s,[,v])=>s+v, 0);
 
     showContent(`
         <div class="view-header">Account Balances</div>
         <div style="padding:0 16px 6px;font-size:13px;color:var(--text-secondary)">All-time running balance</div>
         <div class="card" style="margin-bottom:16px">
-            ${sorted.map(([acc, b]) => `
+            ${sorted.map(([acc,b])=>`
                 <div class="account-item">
-                    <div>
-                        <div class="account-name">${acc}</div>
-                    </div>
+                    <div class="account-name">${acc}</div>
                     <div class="account-balance" style="color:${b>=0?'var(--income)':'var(--expense)'}">
                         ${b<0?'-':''}₱${fmt(Math.abs(b))}
                     </div>
@@ -896,11 +815,15 @@ function renderAccounts() {
 function renderSettings() {
     showContent(`
         <div class="settings-section">
-            <div class="settings-section-title">Sheet</div>
+            <div class="settings-section-title">Connection</div>
             <div class="settings-card">
-                <div class="settings-item" onclick="editSheetTab()">
-                    <span class="settings-label">Tab Name</span>
-                    <span class="settings-value">${settings.sheetTab} ›</span>
+                <div class="settings-item" onclick="changeScriptUrl()">
+                    <span class="settings-label">Apps Script URL</span>
+                    <span class="settings-value">Change ›</span>
+                </div>
+                <div class="settings-item" onclick="loadData();showToast('Refreshing…')">
+                    <span class="settings-label">Refresh Data</span>
+                    <span class="settings-value">↻</span>
                 </div>
             </div>
 
@@ -923,30 +846,24 @@ function renderSettings() {
                     <span class="settings-value">${settings.expenseCategories.length} ›</span>
                 </div>
             </div>
-
-            <div class="settings-section-title">Data</div>
-            <div class="settings-card">
-                <div class="settings-item" onclick="loadData()">
-                    <span class="settings-label">Refresh from Sheet</span>
-                    <span class="settings-value">↻</span>
-                </div>
-            </div>
         </div>
-
-        <button class="danger-btn" onclick="if(confirm('Sign out?'))signOut()">Sign Out</button>
     `);
 }
 
-function editSheetTab() {
-    const v = prompt('Sheet tab name:', settings.sheetTab);
-    if (v && v.trim()) { settings.sheetTab = v.trim(); saveSettings(); showToast('Saved. Refreshing…'); loadData(); }
+function changeScriptUrl() {
+    const url = prompt('Paste new Apps Script URL:', SCRIPT_URL);
+    if (url && url.startsWith('https://script.google.com')) {
+        localStorage.setItem('ft_script_url', url);
+        SCRIPT_URL = url;
+        showToast('Updated! Reloading…');
+        loadData();
+    }
 }
 function editList(key, label) {
     const v = prompt(label, settings[key].join('\n'));
     if (v !== null) {
         settings[key] = v.split('\n').map(s=>s.trim()).filter(Boolean);
-        saveSettings(); showToast('Updated');
-        renderSettings();
+        saveSettings(); showToast('Updated'); renderSettings();
     }
 }
 
