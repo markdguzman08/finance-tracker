@@ -696,7 +696,7 @@ function renderAdd() {
             <div class="form-group">
                 <label class="form-label">Account</label>
                 <div class="form-select-wrap">
-                    <select class="form-select" onchange="form.account=this.value">
+                    <select id="f-account" class="form-select">
                         <option value="">Select Account</option>
                         ${settings.accounts.map(a=>`<option value="${a}" ${form.account===a?'selected':''}>${a}</option>`).join('')}
                     </select>
@@ -707,7 +707,7 @@ function renderAdd() {
             <div class="form-group">
                 <label class="form-label">${form.type==='Transfer-In'?'From Account':'To Account'}</label>
                 <div class="form-select-wrap">
-                    <select class="form-select" onchange="form.transferAccount=this.value">
+                    <select id="f-transfer" class="form-select">
                         <option value="">Select Account</option>
                         ${settings.accounts.map(a=>`<option value="${a}" ${form.transferAccount===a?'selected':''}>${a}</option>`).join('')}
                     </select>
@@ -716,7 +716,7 @@ function renderAdd() {
             <div class="form-group">
                 <label class="form-label">Category</label>
                 <div class="form-select-wrap">
-                    <select class="form-select" onchange="form.category=this.value">
+                    <select id="f-category" class="form-select">
                         <option value="">Select Category</option>
                         ${cats.map(c=>`<option value="${c}" ${form.category===c?'selected':''}>${c}</option>`).join('')}
                     </select>
@@ -724,21 +724,21 @@ function renderAdd() {
             </div>
             <div class="form-group">
                 <label class="form-label">Subcategory <span style="font-weight:400">(optional)</span></label>
-                <input type="text" class="form-input" placeholder="e.g. SPX Shipping"
-                    value="${form.subcategory}" onchange="form.subcategory=this.value">
+                <input id="f-subcategory" type="text" class="form-input" placeholder="e.g. SPX Shipping"
+                    value="${form.subcategory}">
             </div>`}
 
             <div class="form-group">
                 <label class="form-label">Note <span style="font-weight:400">(optional)</span></label>
-                <input type="text" class="form-input" placeholder="Add a note…"
-                    value="${form.note}" onchange="form.note=this.value">
+                <input id="f-note" type="text" class="form-input" placeholder="Add a note…"
+                    value="${form.note}">
             </div>
 
             <div class="form-group">
                 <label class="form-label">Amount (₱)</label>
-                <input type="number" class="form-input" placeholder="0.00"
+                <input id="f-amount" type="number" class="form-input" placeholder="0.00"
                     value="${form.amount}" step="0.01" min="0" inputmode="decimal"
-                    onchange="form.amount=this.value" style="font-size:22px;font-weight:800">
+                    style="font-size:22px;font-weight:800">
             </div>
 
             <button class="submit-btn" id="save-btn" onclick="saveTransaction(this)">
@@ -751,32 +751,42 @@ function setType(t) { form.type = t; form.category = ''; renderAdd(); }
 
 async function saveTransaction(btn) {
     const isTransfer = form.type === 'Transfer-In' || form.type === 'Transfer-Out';
-    if (!form.account)                               { showToast('Please select an account'); return; }
-    if (!form.amount || parseFloat(form.amount) <= 0){ showToast('Please enter a valid amount'); return; }
-    if (!isTransfer && !form.category)               { showToast('Please select a category'); return; }
+
+    // Read directly from DOM — more reliable on iOS
+    const account         = (document.getElementById('f-account')?.value     || '').trim();
+    const category        = (document.getElementById('f-category')?.value    || '').trim();
+    const subcategory     = (document.getElementById('f-subcategory')?.value || '').trim();
+    const note            = (document.getElementById('f-note')?.value        || '').trim();
+    const amount          = (document.getElementById('f-amount')?.value      || '').trim();
+    const transferAccount = (document.getElementById('f-transfer')?.value    || '').trim();
+    const date            = form.date;
+
+    if (!account)                               { showToast('Please select an account'); return; }
+    if (!amount || parseFloat(amount) <= 0)     { showToast('Please enter a valid amount'); return; }
+    if (!isTransfer && !category)               { showToast('Please select a category'); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Saving…';
 
     try {
         const row = [
-            toSheetDate(form.date), form.account,
-            isTransfer ? '' : form.category,
-            isTransfer ? '' : form.subcategory,
-            form.note, parseFloat(form.amount), form.type,
-            isTransfer ? form.transferAccount : ''
+            toSheetDate(date), account,
+            isTransfer ? '' : category,
+            isTransfer ? '' : subcategory,
+            note, parseFloat(amount), form.type,
+            isTransfer ? transferAccount : ''
         ];
         await apiAppend(row);
 
         allData.push({
-            period: toSheetDate(form.date), account: form.account,
-            category: isTransfer ? '' : form.category,
-            subcategory: isTransfer ? '' : form.subcategory,
-            note: form.note, amount: parseFloat(form.amount),
-            type: form.type, transferAccount: isTransfer ? form.transferAccount : ''
+            period: toSheetDate(date), account,
+            category: isTransfer ? '' : category,
+            subcategory: isTransfer ? '' : subcategory,
+            note, amount: parseFloat(amount),
+            type: form.type, transferAccount: isTransfer ? transferAccount : ''
         });
 
-        form = resetForm(form.account);
+        form = resetForm(account);
         showToast('✅ Saved!');
         navigate('dashboard');
     } catch(e) {
