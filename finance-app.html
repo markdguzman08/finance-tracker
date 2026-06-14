@@ -405,48 +405,69 @@ function resetForm(keepAccount) {
 // ─── AUTH ────────────────────────────────────────────
 window.addEventListener('load', () => {
     updateMonthLabel();
-    // If user has signed in before, try silent re-auth
-    if (localStorage.getItem('ft_signed_in')) {
-        waitForGoogleThenSilentSignIn();
+    // Check for a stored, non-expired token
+    const token   = localStorage.getItem('ft_token');
+    const expiry  = parseInt(localStorage.getItem('ft_expiry') || '0');
+    if (token && Date.now() < expiry) {
+        accessToken = token;
+        showApp();
+        loadData();
+    } else if (localStorage.getItem('ft_signed_in')) {
+        // Token expired but user has signed in before — try silent re-auth
+        waitForGoogle(silentSignIn);
     }
 });
 
-function waitForGoogleThenSilentSignIn(tries = 0) {
-    if (window.google) { silentSignIn(); return; }
-    if (tries < 20) setTimeout(() => waitForGoogleThenSilentSignIn(tries + 1), 300);
+function waitForGoogle(fn, tries = 0) {
+    if (window.google) { fn(); return; }
+    if (tries < 20) setTimeout(() => waitForGoogle(fn, tries + 1), 300);
 }
 
 function silentSignIn() {
-    initTokenClient('');
-    tokenClient.requestAccessToken({ prompt: '' });
+    try {
+        const tc = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID, scope: SCOPE,
+            hint: localStorage.getItem('ft_email') || '',
+            prompt: '',
+            callback: (resp) => {
+                if (resp.error) return; // show login screen silently
+                onToken(resp);
+            }
+        });
+        tc.requestAccessToken({ prompt: '' });
+    } catch(e) {}
 }
 
 function signIn() {
     if (!window.google) { showToast('Google library not loaded yet. Try again.'); return; }
-    initTokenClient('consent');
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-}
-
-function initTokenClient(prompt) {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID, scope: SCOPE,
-        prompt: prompt,
         callback: (resp) => {
-            if (resp.error) {
-                // Silent failed — just show login screen (no toast)
-                return;
-            }
-            accessToken = resp.access_token;
-            localStorage.setItem('ft_signed_in', '1');
-            showApp(); loadData();
+            if (resp.error) { showToast('Sign-in failed: ' + resp.error); return; }
+            onToken(resp);
         }
     });
+    tokenClient.requestAccessToken();
+}
+
+function onToken(resp) {
+    accessToken = resp.access_token;
+    // Store token + expiry (expires_in is in seconds, subtract 60s buffer)
+    const expiry = Date.now() + (resp.expires_in - 60) * 1000;
+    localStorage.setItem('ft_token',     accessToken);
+    localStorage.setItem('ft_expiry',    expiry.toString());
+    localStorage.setItem('ft_signed_in', '1');
+    showApp();
+    loadData();
 }
 
 function signOut() {
     if (accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
     accessToken = null;
+    localStorage.removeItem('ft_token');
+    localStorage.removeItem('ft_expiry');
     localStorage.removeItem('ft_signed_in');
+    localStorage.removeItem('ft_email');
     allData = [];
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
