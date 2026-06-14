@@ -1,5 +1,5 @@
 // Finance Tracker — Service Worker
-const CACHE = 'finance-v3';
+const CACHE = 'finance-v5';
 const ASSETS = ['./finance-app.html', './manifest.json'];
 
 self.addEventListener('install', e => {
