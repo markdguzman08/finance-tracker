@@ -161,7 +161,7 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 18px; flex-shrink: 0;
         }
-        .tx-icon.income  { background: #D1FAE5; }
+        .tx-icon.income  { background:  �1FAE5; }
         .tx-icon.expense { background: #FEE2E2; }
         .tx-icon.transfer{ background: #EDE9FE; }
         .tx-info { flex: 1; min-width: 0; }
@@ -425,13 +425,15 @@ async function apiGet() {
 }
 
 async function apiAppend(row) {
-    const r = await fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ row })
-    });
+    // Use GET with URL params — avoids POST→GET redirect issue with GAS exec URL
+    const url = SCRIPT_URL
+        + '?action=append'
+        + '&data=' + encodeURIComponent(JSON.stringify({ row }))
+        + '&t=' + Date.now();
+    const r = await fetch(url, { redirect: 'follow' });
     const data = await r.json();
     if (data.error) throw new Error(data.error);
+    if (!data.success) throw new Error('Sheet write did not confirm — check script URL');
     return data;
 }
 
@@ -897,10 +899,4 @@ function showToast(msg) {
     setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ─── SERVICE WORKER ───────────────────────────────────
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
-}
-</script>
-</body>
-</html>
+// ─── SERVICE WORKER ───
