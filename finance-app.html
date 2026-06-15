@@ -304,7 +304,7 @@
     <button class="setup-btn" onclick="saveScriptUrl()">Connect to Google Sheet</button>
     <div class="setup-help">
         Open your Google Sheet → Extensions → Apps Script<br>
-        → Deploy ₒ New deployment → Web app → Copy URL
+        → Deploy → New deployment → Web app → Copy URL
     </div>
 </div>
 
@@ -905,4 +905,10 @@ function showToast(msg) {
 
 // ─── SERVICE WORKER ───────────────────────────────────
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('
+    navigator.serviceWorker.register('sw.js')
+        .then(() => console.log('SW registered'))
+        .catch(err => console.error('SW error:', err));
+}
+</script>
+</body>
+</html>
