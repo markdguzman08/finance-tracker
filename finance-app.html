@@ -416,7 +416,7 @@ function showApp() {
     navigate('dashboard');
 }
 
-// ─── API ────────────────────────────────────────────
+// ─── API ─────────────────────────────────────────────
 async function apiGet() {
     const url = SCRIPT_URL + '?t=' + Date.now();
     const r = await fetch(url, { redirect: 'follow' });
@@ -454,7 +454,7 @@ async function loadData() {
         }));
         renderCurrentView();
     } catch(e) {
-        showContent(`<div class="empty-state"><div class="empty-icon">⚠️</di/div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
+        showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
     }
 }
 
@@ -904,4 +904,20 @@ function editList(key, label) {
     }
 }
 
-// ─── TOAST ─────────────�
+// ─── TOAST ────────────────────────────────────────────────────────
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ─── SERVICE WORKER ───────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+        .then(() => console.log('SW registered'))
+        .catch(err => console.error('SW error:', err));
+}
+</script>
+</body>
+</html>
