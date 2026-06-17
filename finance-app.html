@@ -442,16 +442,20 @@ async function loadData() {
     showContent('<div style="padding:60px;text-align:center;color:var(--text-secondary)">Loading…</div>');
     try {
         const data = await apiGet();
-        allData = (data.values || []).map(r => ({
-            period:          String(r[0] || ''),
-            account:         String(r[1] || ''),
-            category:        String(r[2] || ''),
-            note:            String(r[4] || ''),
-            amount:          parseFloat(r[5]) || 0,
-            type:            String(r[6] || ''),
-            transferAccount: String(r[8] || ''),
-            description:     String(r[9] || '')
-        }));
+        allData = (data.values || []).map(r => {
+            const type = String(r[5] || '');
+            const isTransfer = type === 'Transfer-In' || type === 'Transfer-Out';
+            return {
+                period:          String(r[0] || ''),
+                account:         String(r[1] || ''),
+                category:        isTransfer ? '' : String(r[2] || ''),
+                note:            String(r[3] || ''),
+                amount:          parseFloat(r[4]) || 0,
+                type:            type,
+                transferAccount: isTransfer ? String(r[2] || '') : '',
+                description:     String(r[8] || '')
+            };
+        });
         renderCurrentView();
     } catch(e) {
         showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
@@ -794,21 +798,26 @@ async function saveTransaction(btn) {
     btn.innerHTML = '<div class="spinner"></div> Saving…';
 
     try {
+        // Columns A-F only — sheet ARRAYFORMULA generates G (Joint Code)
+        // For transfers, counterparty goes in C (Category); own account in B
         const row = [
-            toSheetDate(date), account,
-            isTransfer ? '' : category,
-            '',
-            note, parseFloat(amount), form.type,
-            isTransfer ? transferAccount : '',
-            description
+            toSheetDate(date),                              // A = Period
+            account,                                        // B = Accounts
+            isTransfer ? transferAccount : category,        // C = Category / counterparty
+            note,                                           // D = Note
+            parseFloat(amount),                             // E = PHP
+            form.type                                       // F = Income/Expense type
         ];
         await apiAppend(row);
 
         allData.push({
-            period: toSheetDate(date), account,
+            period: toSheetDate(date),
+            account,
             category: isTransfer ? '' : category,
-            note, amount: parseFloat(amount),
-            type: form.type, transferAccount: isTransfer ? transferAccount : '',
+            note,
+            amount: parseFloat(amount),
+            type: form.type,
+            transferAccount: isTransfer ? transferAccount : '',
             description
         });
 
