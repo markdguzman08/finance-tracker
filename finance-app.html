@@ -487,6 +487,9 @@ function monthRows() {
     return allData.filter(r => {
         const d = parseSheetDate(r.period);
         return d && d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
+    }).sort((a, b) => {
+        const da = parseSheetDate(a.period), db = parseSheetDate(b.period);
+        return db - da; // newest first
     });
 }
 function monthStats() {
@@ -808,7 +811,9 @@ async function saveTransaction(btn) {
             parseFloat(amount),                             // E = PHP
             form.type                                       // F = Income/Expense type
         ];
-        await apiAppend(row);
+        // Fire-and-forget — data hits the sheet immediately.
+        // Don't wait for GAS sort to finish (takes too long).
+        apiAppend(row).catch(e => console.warn('Append background:', e.message));
 
         allData.push({
             period: toSheetDate(date),
