@@ -556,7 +556,7 @@ function changeMonth(dir) {
 function renderDashboard() {
     const { income, expense, net, rows } = monthStats();
     const bd = categoryBreakdown();
-    const recent = [...rows].reverse().slice(0, 5);
+    const recent = rows.slice(0, 5);
 
     showContent(`
         <div class="net-card">
@@ -659,8 +659,6 @@ function renderRecords() {
             (r.account||'').toLowerCase().includes(q)
         );
     }
-    rows = [...rows].reverse();
-
     showContent(`
         <div style="padding-top:12px">
             <div class="search-box">
