@@ -1102,7 +1102,9 @@ function acShow(inputId, dropId, field) {
     if (!matches.length) { acHide(dropId); return; }
 
     drop.innerHTML = matches.map(m =>
-        `<div class="ac-item" onmousedown="acPick('${inputId}','${dropId}',${JSON.stringify(m)})">${m}</div>`
+        `<div class="ac-item"
+            onmousedown="event.preventDefault();acPick('${inputId}','${dropId}',${JSON.stringify(m)})"
+            ontouchend="event.preventDefault();acPick('${inputId}','${dropId}',${JSON.stringify(m)})">${m}</div>`
     ).join('');
     drop.classList.add('open');
 }
