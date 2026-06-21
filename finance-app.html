@@ -409,7 +409,6 @@ function loadSettings() {
             if (!Array.isArray(s[key])) s[key] = defaultSettings()[key];
             s[key] = s[key].flatMap(v => String(v).split('\n').map(x=>x.trim())).filter(Boolean);
         });
-        if (typeof s.prevTotals !== 'object' || Array.isArray(s.prevTotals)) s.prevTotals = {};
         return s;
     }
     catch(e) { return defaultSettings(); }
@@ -419,8 +418,7 @@ function defaultSettings() {
         sheetTab: 'Moneyger',
         accounts: ['BPI','MariBank','GCASH','CASH','Paymaya','PS Bank'],
         incomeCategories:  ['Custom Temporary Tattoos','Shopee Sales','Website Sales','Other Income'],
-        expenseCategories: ['Labor','Utilities','Mark Expenses','Office Supplies','Advertising (FB Ads)','Dine out','Website and Technologies','Miscellaneous'],
-        prevTotals: {}
+        expenseCategories: ['Labor','Utilities','Mark Expenses','Office Supplies','Advertising (FB Ads)','Dine out','Website and Technologies','Miscellaneous']
     };
 }
 function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(settings)); }
@@ -547,32 +545,15 @@ function monthStats() {
     });
     return { income, expense, net: income - expense, rows };
 }
-function allTimeStats() {
-    // Sum all Moneyger data (all time, not filtered by month)
-    let income = 0, expense = 0;
-    const byCat = {};
-    allData.forEach(r => {
-        if (r.type === 'Income') income += r.amount;
-        else if (r.type === 'Exp.') { expense += r.amount; byCat[r.category] = (byCat[r.category]||0) + r.amount; }
-    });
-    // Add previous balances
-    const pt = settings.prevTotals || {};
-    Object.entries(pt).forEach(([cat, amt]) => {
-        const n = parseFloat(amt) || 0;
-        if (n === 0) return;
-        if (settings.incomeCategories.includes(cat)) income += n;
-        else { expense += n; byCat[cat] = (byCat[cat]||0) + n; }
-    });
-    return { income, expense, net: income - expense, byCat };
-}
 function accountBalances() {
     const bal = {};
     settings.accounts.forEach(a => bal[a] = 0);
     allData.forEach(r => {
         if (!r.account) return;
         if (!bal.hasOwnProperty(r.account)) bal[r.account] = 0;
-        if (r.type === 'Income'       || r.type === 'Transfer-In')  bal[r.account] += r.amount;
-        if (r.type === 'Exp.'         || r.type === 'Transfer-Out') bal[r.account] -= r.amount;
+        if (r.type === 'Income'          || r.type === 'Transfer-In')    bal[r.account] += r.amount;
+        if (r.type === 'Exp.'            || r.type === 'Transfer-Out')   bal[r.account] -= r.amount;
+        if (r.type === 'Opening Balance')                                 bal[r.account] += r.amount;
     });
     return bal;
 }
@@ -621,8 +602,6 @@ function renderDashboard() {
     const { income, expense, net, rows } = monthStats();
     const bd = categoryBreakdown();
     const recent = rows.slice(0, 5);
-    const at = allTimeStats();
-    const hasPrev = Object.keys(settings.prevTotals||{}).some(k => parseFloat(settings.prevTotals[k]));
 
     showContent(`
         <div class="net-card">
@@ -643,27 +622,6 @@ function renderDashboard() {
                 <div class="summary-amount expense">₱${fmt(expense)}</div>
             </div>
         </div>
-
-        ${hasPrev ? `
-        <div class="card" style="margin:0 16px 12px;">
-            <div class="card-title" style="margin-bottom:10px;">All-Time Totals <span style="font-size:11px;font-weight:500;color:#94a3b8;">(incl. previous)</span></div>
-            <div class="summary-grid" style="margin:0;">
-                <div class="summary-card">
-                    <div class="summary-icon">💚</div>
-                    <div class="summary-label">Income</div>
-                    <div class="summary-amount income">₱${fmt(at.income)}</div>
-                </div>
-                <div class="summary-card">
-                    <div class="summary-icon">🔴</div>
-                    <div class="summary-label">Expenses</div>
-                    <div class="summary-amount expense">₱${fmt(at.expense)}</div>
-                </div>
-            </div>
-            <div style="text-align:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-                <span style="font-size:12px;color:var(--text-secondary);">Net All-Time: </span>
-                <span style="font-size:15px;font-weight:800;color:${at.net>=0?'var(--income)':'var(--expense)'};">${at.net>=0?'+':''}₱${fmt(at.net)}</span>
-            </div>
-        </div>` : ''}
 
         ${bd.length ? `
         <div class="card">
@@ -993,37 +951,8 @@ function renderSettings() {
                 </div>
             </div>
 
-            <div class="settings-section-title">Previous Balances</div>
-            <div style="padding:0 16px 8px;font-size:12px;color:var(--text-secondary);line-height:1.5;">
-                Transactions before Moneyger. Added to All-Time totals on the dashboard.
-            </div>
-            <div class="settings-card">
-                ${[...settings.incomeCategories.map(c=>({c,type:'income'})), ...settings.expenseCategories.map(c=>({c,type:'expense'}))].map(({c,type})=>`
-                <div class="settings-item" style="gap:12px;">
-                    <span class="settings-label" style="flex:1;font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);">${c}</span>
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:13px;color:var(--text-secondary);">₱</span>
-                        <input type="number" min="0" step="0.01" inputmode="decimal"
-                            value="${parseFloat(settings.prevTotals?.[c])||''}"
-                            placeholder="0"
-                            style="width:110px;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;text-align:right;outline:none;"
-                            onfocus="this.style.borderColor='var(--primary-light)'"
-                            onblur="this.style.borderColor='var(--border)';savePrevTotal('${c.replace(/'/g,"\\'")}',this.value)"
-                            onkeydown="if(event.key==='Enter')this.blur()">
-                    </div>
-                </div>`).join('')}
-            </div>
         </div>
     `);
-}
-
-function savePrevTotal(cat, val) {
-    if (!settings.prevTotals) settings.prevTotals = {};
-    const n = parseFloat(val);
-    if (!val || isNaN(n) || n === 0) delete settings.prevTotals[cat];
-    else settings.prevTotals[cat] = n;
-    saveSettings();
-    showToast('Saved');
 }
 
 function changeScriptUrl() {
