@@ -482,6 +482,31 @@ async function apiUpdate(rowNum, row) {
     return data;
 }
 
+async function apiDelete(rowNum) {
+    const url = SCRIPT_URL
+        + '?action=delete'
+        + '&row=' + rowNum
+        + '&t=' + Date.now();
+    const r = await fetch(url, { redirect: 'follow' });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.success) throw new Error('Delete did not confirm');
+    return data;
+}
+
+async function deleteTx(rowNum) {
+    if (!confirm('Delete this transaction? This cannot be undone.')) return;
+    try {
+        await apiDelete(rowNum);
+        allData = allData.filter(r => r._row !== rowNum);
+        showToast('🗑 Deleted');
+        form = resetForm();
+        navigate('records');
+    } catch(e) {
+        showToast('❌ ' + e.message);
+    }
+}
+
 async function apiAppend(row) {
     // Use GET with URL params — avoids POST→GET redirect issue with GAS exec URL
     const url = SCRIPT_URL
@@ -785,7 +810,10 @@ function renderAdd() {
         <div class="form-section">
             ${isEdit ? `<div style="font-size:13px;font-weight:600;color:var(--primary);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
                 <span>✏️ Editing transaction</span>
-                <button onclick="form=resetForm();renderAdd()" style="background:none;border:none;font-size:13px;color:var(--text-secondary);cursor:pointer;">✕ Cancel</button>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button onclick="deleteTx(${form._editRow})" style="background:none;border:1px solid #e55;border-radius:6px;font-size:12px;color:#e55;cursor:pointer;padding:5px 10px;">🗑 Delete</button>
+                    <button onclick="form=resetForm();navigate('records')" style="background:none;border:none;font-size:13px;color:var(--text-secondary);cursor:pointer;padding:6px 10px;">✕ Cancel</button>
+                </div>
             </div>` : ''}
             <div class="form-group">
                 <label class="form-label">Type</label>
@@ -913,13 +941,11 @@ async function saveTransaction(btn) {
         ];
 
         if (editRow) {
-            // Update existing row
-            apiUpdate(editRow, row).catch(e => console.warn('Update background:', e.message));
+            await apiUpdate(editRow, row);
             const idx = allData.findIndex(r => r._row === editRow);
             if (idx !== -1) allData[idx] = { ...allData[idx], period: toSheetDate(date), account, category: isTransfer?'':category, note, amount: parseFloat(amount), type: form.type, transferAccount: isTransfer?transferAccount:'', description };
             showToast('✅ Updated!');
         } else {
-            // Append new row
             apiAppend(row.slice(0, 6)).catch(e => console.warn('Append background:', e.message));
             allData.push({ _row: null, period: toSheetDate(date), account, category: isTransfer?'':category, note, amount: parseFloat(amount), type: form.type, transferAccount: isTransfer?transferAccount:'', description });
             showToast('✅ Saved!');
@@ -928,9 +954,9 @@ async function saveTransaction(btn) {
         form = resetForm(account);
         navigate('records');
     } catch(e) {
-        showToast('Error: ' + e.message);
+        showToast('❌ ' + e.message);
         btn.disabled = false;
-        btn.textContent = editRow ? '✏️ Update Transaction' : 'Save Transaction';
+        btn.innerHTML = editRow ? '✏️ Update Transaction' : 'Save Transaction';
     }
 }
 
