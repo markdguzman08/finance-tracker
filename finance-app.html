@@ -497,8 +497,18 @@ async function apiDelete(rowNum) {
 async function deleteTx(rowNum) {
     if (!confirm('Delete this transaction? This cannot be undone.')) return;
     try {
-        await apiDelete(rowNum);
-        allData = allData.filter(r => r._row !== rowNum);
+        const tx = allData.find(r => r._row === rowNum);
+        const pairRow = tx?._pairRow || null;
+        if (pairRow) {
+            const hi = Math.max(rowNum, pairRow);
+            const lo = Math.min(rowNum, pairRow);
+            await apiDelete(hi);
+            await apiDelete(lo);
+            allData = allData.filter(r => r._row !== rowNum && r._row !== pairRow);
+        } else {
+            await apiDelete(rowNum);
+            allData = allData.filter(r => r._row !== rowNum);
+        }
         showToast('🗑 Deleted');
         form = resetForm();
         navigate('records');
@@ -539,6 +549,19 @@ async function loadData() {
                 description:     String(r[8] || '')
             };
         });
+        // Pair Transfer-Out and Transfer-In rows so we show one entry per transfer
+        const xferIn = allData.filter(r => r.type === 'Transfer-In');
+        allData.filter(r => r.type === 'Transfer-Out').forEach(out => {
+            out._isPrimary = true;
+            const match = xferIn.find(inn =>
+                !inn._paired &&
+                inn.period === out.period &&
+                inn.amount === out.amount &&
+                inn.account === out.transferAccount &&
+                inn.transferAccount === out.account
+            );
+            if (match) { out._pairRow = match._row; match._paired = true; }
+        });
         renderCurrentView();
     } catch(e) {
         showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
@@ -570,15 +593,16 @@ function editTx(rowNum) {
     const tx = allData.find(r => r._row === rowNum);
     if (!tx) return;
     form = {
-        _editRow:       rowNum,
-        date:           sheetDateToInput(tx.period),
-        type:           tx.type,
-        account:        tx.account,
-        category:       tx.category,
-        note:           tx.note,
-        amount:         String(tx.amount),
+        _editRow:        rowNum,
+        _pairRow:        tx._pairRow || null,
+        date:            sheetDateToInput(tx.period),
+        type:            tx.type === 'Transfer-Out' ? 'Transfer' : tx.type,
+        account:         tx.account,
+        category:        tx.category,
+        note:            tx.note,
+        amount:          String(tx.amount),
         transferAccount: tx.transferAccount,
-        description:    tx.description
+        description:     tx.description
     };
     navigate('add');
 }
@@ -735,16 +759,19 @@ function renderDashboard() {
 
 function txHTML(tx) {
     const isIncome   = tx.type === 'Income';
-    const isTransfer = tx.type.includes('Transfer');
+    const isTransfer = tx.type === 'Transfer-Out' || tx.type === 'Transfer-In';
     const cls  = isIncome ? 'income' : isTransfer ? 'transfer' : 'expense';
     const icon = isIncome ? '💚' : isTransfer ? '🔄' : '🔴';
     const sign = isIncome ? '+' : isTransfer ? '' : '-';
+    const label = tx.type === 'Transfer-Out' ? `${tx.account} → ${tx.transferAccount}`
+                : tx.type === 'Transfer-In'  ? `${tx.transferAccount} → ${tx.account}`
+                : (tx.category || tx.type);
     return `
         <div class="transaction-item" onclick="editTx(${tx._row})" style="cursor:pointer">
             <div class="tx-icon ${cls}">${icon}</div>
             <div class="tx-info">
-                <div class="tx-category">${tx.category || tx.type}</div>
-                <div class="tx-meta">${[tx.note, tx.description, tx.account].filter(Boolean).join(' · ')}</div>
+                <div class="tx-category">${label}</div>
+                <div class="tx-meta">${[tx.note, tx.description, ...(isTransfer ? [] : [tx.account])].filter(Boolean).join(' · ')}</div>
             </div>
             <div class="tx-right">
                 <div class="tx-amount ${cls}">${sign}₱${fmt(tx.amount)}</div>
@@ -755,7 +782,7 @@ function txHTML(tx) {
 
 // ─── RECORDS ──────────────────────────────────────────
 function renderRecords() {
-    let rows = monthRows();
+    let rows = monthRows().filter(r => !r._paired);
     if (recordsFilter === 'income')   rows = rows.filter(r => r.type === 'Income');
     if (recordsFilter === 'expense')  rows = rows.filter(r => r.type === 'Exp.');
     if (recordsFilter === 'transfer') rows = rows.filter(r => r.type.includes('Transfer'));
@@ -797,7 +824,7 @@ function renderRecords() {
 
 // ─── ADD FORM ─────────────────────────────────────────
 function renderAdd() {
-    const isTransfer = form.type === 'Transfer-In' || form.type === 'Transfer-Out';
+    const isTransfer = form.type === 'Transfer';
     const cats = form.type === 'Income' ? settings.incomeCategories
                : form.type === 'Exp.'   ? settings.expenseCategories : [];
     const tc = (t) => {
@@ -818,7 +845,7 @@ function renderAdd() {
             <div class="form-group">
                 <label class="form-label">Type</label>
                 <div class="type-selector">
-                    ${[['Exp.','Expense'],['Income','Income'],['Transfer-In','Trans. In'],['Transfer-Out','Trans. Out']].map(([v,l])=>`
+                    ${[['Exp.','Expense'],['Income','Income'],['Transfer','Transfer']].map(([v,l])=>`
                         <button class="type-btn ${tc(v)}" onclick="setType('${v}')">${l}</button>`).join('')}
                 </div>
             </div>
@@ -829,7 +856,7 @@ function renderAdd() {
             </div>
 
             <div class="form-group">
-                <label class="form-label">Account</label>
+                <label class="form-label">${isTransfer ? 'From Account' : 'Account'}</label>
                 <div class="form-select-wrap">
                     <select id="f-account" class="form-select">
                         <option value="">Select Account</option>
@@ -840,7 +867,7 @@ function renderAdd() {
 
             ${isTransfer ? `
             <div class="form-group">
-                <label class="form-label">${form.type==='Transfer-In'?'From Account':'To Account'}</label>
+                <label class="form-label">To Account</label>
                 <div class="form-select-wrap">
                     <select id="f-transfer" class="form-select">
                         <option value="">Select Account</option>
@@ -906,7 +933,7 @@ function setType(t) {
 }
 
 async function saveTransaction(btn) {
-    const isTransfer = form.type === 'Transfer-In' || form.type === 'Transfer-Out';
+    const isTransfer = form.type === 'Transfer';
 
     // Read directly from DOM — more reliable on iOS
     const account         = (document.getElementById('f-account')?.value     || '').trim();
@@ -917,38 +944,51 @@ async function saveTransaction(btn) {
     const transferAccount = (document.getElementById('f-transfer')?.value    || '').trim();
     const date            = document.getElementById('f-date')?.value || form.date;
 
-    if (!account)                               { showToast('Please select an account'); return; }
-    if (!amount || parseFloat(amount) <= 0)     { showToast('Please enter a valid amount'); return; }
-    if (!isTransfer && !category)               { showToast('Please select a category'); return; }
+    if (!account)                                  { showToast('Please select an account'); return; }
+    if (!amount || parseFloat(amount) <= 0)        { showToast('Please enter a valid amount'); return; }
+    if (!isTransfer && !category)                  { showToast('Please select a category'); return; }
+    if (isTransfer && !transferAccount)            { showToast('Please select a To Account'); return; }
+    if (isTransfer && account === transferAccount) { showToast('From and To accounts must be different'); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Saving…';
 
     const editRow = form._editRow;
-    try {
-        // Cols A-F (ARRAYFORMULA handles G); description written separately to col I in GAS
-        const row = [
-            toSheetDate(date),                              // A = Period
-            account,                                        // B = Accounts
-            isTransfer ? transferAccount : category,        // C = Category / counterparty
-            note,                                           // D = Note
-            parseFloat(amount),                             // E = PHP
-            form.type,                                      // F = Type
-            '', '',                                         // G, H — placeholders so col I can be set
-            description                                     // I = Description
-        ];
+    const pairRow = form._pairRow || null;
+    const amt     = parseFloat(amount);
+    const dateFmt = toSheetDate(date);
 
-        if (editRow) {
-            await apiUpdate(editRow, row);
-            const idx = allData.findIndex(r => r._row === editRow);
-            if (idx !== -1) allData[idx] = { ...allData[idx], period: toSheetDate(date), account, category: isTransfer?'':category, note, amount: parseFloat(amount), type: form.type, transferAccount: isTransfer?transferAccount:'', description };
-            showToast('✅ Updated!');
+    try {
+        if (isTransfer) {
+            const outRow = [dateFmt, account, transferAccount, note, amt, 'Transfer-Out', '', '', description];
+            const inRow  = [dateFmt, transferAccount, account, note, amt, 'Transfer-In',  '', '', description];
+            if (editRow) {
+                await apiUpdate(editRow, outRow);
+                if (pairRow) await apiUpdate(pairRow, inRow);
+                const idx  = allData.findIndex(r => r._row === editRow);
+                const pIdx = allData.findIndex(r => r._row === pairRow);
+                if (idx  !== -1) allData[idx]  = { ...allData[idx],  period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description, _isPrimary: true, _pairRow: pairRow };
+                if (pIdx !== -1) allData[pIdx] = { ...allData[pIdx], period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description, _paired: true };
+            } else {
+                await apiAppend(outRow.slice(0, 6));
+                await apiAppend(inRow.slice(0, 6));
+                const newOut = { _row: null, _isPrimary: true, _pairRow: null, period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description };
+                const newIn  = { _row: null, _paired: true, period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description };
+                allData.push(newOut, newIn);
+            }
         } else {
-            apiAppend(row.slice(0, 6)).catch(e => console.warn('Append background:', e.message));
-            allData.push({ _row: null, period: toSheetDate(date), account, category: isTransfer?'':category, note, amount: parseFloat(amount), type: form.type, transferAccount: isTransfer?transferAccount:'', description });
-            showToast('✅ Saved!');
+            const row = [dateFmt, account, category, note, amt, form.type, '', '', description];
+            if (editRow) {
+                await apiUpdate(editRow, row);
+                const idx = allData.findIndex(r => r._row === editRow);
+                if (idx !== -1) allData[idx] = { ...allData[idx], period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description };
+            } else {
+                apiAppend(row.slice(0, 6)).catch(e => console.warn('Append background:', e.message));
+                allData.push({ _row: null, period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description });
+            }
         }
 
+        showToast(editRow ? '✅ Updated!' : '✅ Saved!');
         form = resetForm(account);
         navigate('records');
     } catch(e) {
