@@ -1099,10 +1099,13 @@ function acShow(inputId, dropId, field) {
 
     if (!matches.length) { acHide(dropId); return; }
 
-    drop.innerHTML = matches.map(m =>
-        `<div class="ac-item"
-            onclick="acPick('${inputId}','${dropId}',${JSON.stringify(m)})">${m}</div>`
-    ).join('');
+    drop.innerHTML = matches.map(m => `<div class="ac-item">${m}</div>`).join('');
+    drop.querySelectorAll('.ac-item').forEach((el, i) => {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            acPick(inputId, dropId, matches[i]);
+        });
+    });
     drop.classList.add('open');
 }
 function acHide(dropId) {
