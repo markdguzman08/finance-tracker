@@ -509,13 +509,18 @@ async function loadData() {
 // ─── DATE HELPERS ─────────────────────────────────────
 function parseSheetDate(str) {
     if (!str) return null;
+    // "DD-MMM-YY" or "DD-MMM-YYYY" format (what the app writes)
     const p = str.split('-');
-    if (p.length !== 3) return null;
-    const mMap = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
-    const d = parseInt(p[0]), m = mMap[p[1]];
-    const y = p[2].length === 2 ? 2000 + parseInt(p[2]) : parseInt(p[2]);
-    if (isNaN(d) || m === undefined || isNaN(y)) return null;
-    return new Date(y, m, d);
+    if (p.length === 3 && isNaN(Number(p[1]))) {
+        const mMap = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+        const d = parseInt(p[0]), m = mMap[p[1]];
+        const y = p[2].length === 2 ? 2000 + parseInt(p[2]) : parseInt(p[2]);
+        if (!isNaN(d) && m !== undefined && !isNaN(y)) return new Date(y, m, d);
+    }
+    // ISO / serial date strings from GAS (date-type cells serialised by JSON.stringify)
+    const dt = new Date(str);
+    if (!isNaN(dt.getTime())) return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    return null;
 }
 function toSheetDate(val) {
     const d = new Date(val + 'T00:00:00');
