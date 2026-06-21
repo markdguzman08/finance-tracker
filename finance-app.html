@@ -351,7 +351,7 @@
         <button class="nav-item" id="nav-records" onclick="navigate('records')">
             <span class="nav-icon">📋</span><span>Records</span>
         </button>
-        <button class="nav-add" onclick="navigate('add')">+</button>
+        <button class="nav-add" onclick="form=resetForm();navigate('add')">+</button>
         <button class="nav-item" id="nav-accounts" onclick="navigate('accounts')">
             <span class="nav-icon">🏦</span><span>Accounts</span>
         </button>
@@ -469,6 +469,19 @@ async function apiGet() {
     return data;
 }
 
+async function apiUpdate(rowNum, row) {
+    const url = SCRIPT_URL
+        + '?action=update'
+        + '&row=' + rowNum
+        + '&data=' + encodeURIComponent(JSON.stringify({ row }))
+        + '&t=' + Date.now();
+    const r = await fetch(url, { redirect: 'follow' });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.success) throw new Error('Update did not confirm');
+    return data;
+}
+
 async function apiAppend(row) {
     // Use GET with URL params — avoids POST→GET redirect issue with GAS exec URL
     const url = SCRIPT_URL
@@ -486,10 +499,11 @@ async function loadData() {
     showContent('<div style="padding:60px;text-align:center;color:var(--text-secondary)">Loading…</div>');
     try {
         const data = await apiGet();
-        allData = (data.values || []).map(r => {
+        allData = (data.values || []).map((r, i) => {
             const type = String(r[5] || '');
             const isTransfer = type === 'Transfer-In' || type === 'Transfer-Out';
             return {
+                _row:            i + 2,   // sheet row number (row 1 = header)
                 period:          String(r[0] || ''),
                 account:         String(r[1] || ''),
                 category:        isTransfer ? '' : String(r[2] || ''),
@@ -521,6 +535,27 @@ function parseSheetDate(str) {
     const dt = new Date(str);
     if (!isNaN(dt.getTime())) return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
     return null;
+}
+function sheetDateToInput(period) {
+    const d = parseSheetDate(period);
+    if (!d) return todayInput();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function editTx(rowNum) {
+    const tx = allData.find(r => r._row === rowNum);
+    if (!tx) return;
+    form = {
+        _editRow:       rowNum,
+        date:           sheetDateToInput(tx.period),
+        type:           tx.type,
+        account:        tx.account,
+        category:       tx.category,
+        note:           tx.note,
+        amount:         String(tx.amount),
+        transferAccount: tx.transferAccount,
+        description:    tx.description
+    };
+    navigate('add');
 }
 function toSheetDate(val) {
     const d = new Date(val + 'T00:00:00');
@@ -680,7 +715,7 @@ function txHTML(tx) {
     const icon = isIncome ? '💚' : isTransfer ? '🔄' : '🔴';
     const sign = isIncome ? '+' : isTransfer ? '' : '-';
     return `
-        <div class="transaction-item">
+        <div class="transaction-item" onclick="editTx(${tx._row})" style="cursor:pointer">
             <div class="tx-icon ${cls}">${icon}</div>
             <div class="tx-info">
                 <div class="tx-category">${tx.category || tx.type}</div>
@@ -745,8 +780,13 @@ function renderAdd() {
         return t === 'Income' ? 'active-income' : t === 'Exp.' ? 'active-expense' : 'active-transfer';
     };
 
+    const isEdit = !!form._editRow;
     showContent(`
         <div class="form-section">
+            ${isEdit ? `<div style="font-size:13px;font-weight:600;color:var(--primary);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+                <span>✏️ Editing transaction</span>
+                <button onclick="form=resetForm();renderAdd()" style="background:none;border:none;font-size:13px;color:var(--text-secondary);cursor:pointer;">✕ Cancel</button>
+            </div>` : ''}
             <div class="form-group">
                 <label class="form-label">Type</label>
                 <div class="type-selector">
@@ -821,7 +861,7 @@ function renderAdd() {
             </div>
 
             <button class="submit-btn" id="save-btn" onclick="saveTransaction(this)">
-                Save Transaction
+                ${isEdit ? '✏️ Update Transaction' : 'Save Transaction'}
             </button>
         </div>`);
 }
@@ -858,39 +898,39 @@ async function saveTransaction(btn) {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Saving…';
 
+    const editRow = form._editRow;
     try {
-        // Columns A-F only — sheet ARRAYFORMULA generates G (Joint Code)
-        // For transfers, counterparty goes in C (Category); own account in B
+        // Cols A-F (ARRAYFORMULA handles G); description written separately to col I in GAS
         const row = [
             toSheetDate(date),                              // A = Period
             account,                                        // B = Accounts
             isTransfer ? transferAccount : category,        // C = Category / counterparty
             note,                                           // D = Note
             parseFloat(amount),                             // E = PHP
-            form.type                                       // F = Income/Expense type
+            form.type,                                      // F = Type
+            '', '',                                         // G, H — placeholders so col I can be set
+            description                                     // I = Description
         ];
-        // Fire-and-forget — data hits the sheet immediately.
-        // Don't wait for GAS sort to finish (takes too long).
-        apiAppend(row).catch(e => console.warn('Append background:', e.message));
 
-        allData.push({
-            period: toSheetDate(date),
-            account,
-            category: isTransfer ? '' : category,
-            note,
-            amount: parseFloat(amount),
-            type: form.type,
-            transferAccount: isTransfer ? transferAccount : '',
-            description
-        });
+        if (editRow) {
+            // Update existing row
+            apiUpdate(editRow, row).catch(e => console.warn('Update background:', e.message));
+            const idx = allData.findIndex(r => r._row === editRow);
+            if (idx !== -1) allData[idx] = { ...allData[idx], period: toSheetDate(date), account, category: isTransfer?'':category, note, amount: parseFloat(amount), type: form.type, transferAccount: isTransfer?transferAccount:'', description };
+            showToast('✅ Updated!');
+        } else {
+            // Append new row
+            apiAppend(row.slice(0, 6)).catch(e => console.warn('Append background:', e.message));
+            allData.push({ _row: null, period: toSheetDate(date), account, category: isTransfer?'':category, note, amount: parseFloat(amount), type: form.type, transferAccount: isTransfer?transferAccount:'', description });
+            showToast('✅ Saved!');
+        }
 
         form = resetForm(account);
-        showToast('✅ Saved!');
-        navigate('dashboard');
+        navigate('records');
     } catch(e) {
         showToast('Error: ' + e.message);
         btn.disabled = false;
-        btn.textContent = 'Save Transaction';
+        btn.textContent = editRow ? '✏️ Update Transaction' : 'Save Transaction';
     }
 }
 
