@@ -221,6 +221,22 @@
         .type-btn.active-income   { border-color: var(--income);   background: #D1FAE5; color: var(--income);   }
         .type-btn.active-transfer { border-color: var(--transfer); background: #EDE9FE; color: var(--transfer); }
 
+        /* ── AUTOCOMPLETE ── */
+        .ac-wrap { position: relative; }
+        .ac-dropdown {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+            background: var(--card); border: 1.5px solid var(--primary-light);
+            border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+            z-index: 500; max-height: 180px; overflow-y: auto; display: none;
+        }
+        .ac-dropdown.open { display: block; }
+        .ac-item {
+            padding: 11px 16px; font-size: 14px; color: var(--text);
+            cursor: pointer; border-bottom: 1px solid var(--border);
+        }
+        .ac-item:last-child { border-bottom: none; }
+        .ac-item:active, .ac-item:hover { background: #EFF6FF; }
+
         /* ── SUBMIT ── */
         .submit-btn {
             width: 100%; padding: 16px; background: var(--primary);
@@ -347,6 +363,26 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- ═══════════ CATEGORY MANAGER MODAL ═══════════ -->
+<div id="cat-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:flex-end;" onclick="if(event.target===this)closeCatModal()">
+    <div id="cat-sheet" style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-height:80dvh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px 12px;">
+            <span id="cat-title" style="font-size:16px;font-weight:700;color:#1E293B;"></span>
+            <button onclick="closeCatModal()" style="background:none;border:none;font-size:22px;color:#64748B;cursor:pointer;line-height:1;">✕</button>
+        </div>
+        <!-- Add row -->
+        <div style="padding:0 16px 12px;display:flex;gap:8px;">
+            <input id="cat-new-input" type="text" placeholder="New category name…"
+                style="flex:1;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:14px;outline:none;"
+                onkeydown="if(event.key==='Enter')addCatItem()" />
+            <button onclick="addCatItem()"
+                style="padding:10px 18px;background:#1E40AF;color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">Add</button>
+        </div>
+        <!-- List -->
+        <div id="cat-list" style="overflow-y:auto;padding:0 16px 24px;flex:1;"></div>
+    </div>
+</div>
+
 <!-- ═══════════════════════ SCRIPT ════════ -->
 <script>
 // ─── CONFIG ──────────────────────────────────────────
@@ -366,7 +402,16 @@ let recordsAccount = '';
 
 let settings = loadSettings();
 function loadSettings() {
-    try { return JSON.parse(localStorage.getItem('ft_settings')) || defaultSettings(); }
+    try {
+        const s = JSON.parse(localStorage.getItem('ft_settings')) || defaultSettings();
+        // Normalize: ensure category/account arrays contain only plain strings (fix corrupt state)
+        ['accounts','incomeCategories','expenseCategories'].forEach(key => {
+            if (!Array.isArray(s[key])) s[key] = defaultSettings()[key];
+            s[key] = s[key].flatMap(v => String(v).split('\n').map(x=>x.trim())).filter(Boolean);
+        });
+        if (typeof s.prevTotals !== 'object' || Array.isArray(s.prevTotals)) s.prevTotals = {};
+        return s;
+    }
     catch(e) { return defaultSettings(); }
 }
 function defaultSettings() {
@@ -374,7 +419,8 @@ function defaultSettings() {
         sheetTab: 'Moneyger',
         accounts: ['BPI','MariBank','GCASH','CASH','Paymaya','PS Bank'],
         incomeCategories:  ['Custom Temporary Tattoos','Shopee Sales','Website Sales','Other Income'],
-        expenseCategories: ['Labor','Utilities','Mark Expenses','Office Supplies','Advertising (FB Ads)','Dine out','Website and Technologies','Miscellaneous']
+        expenseCategories: ['Labor','Utilities','Mark Expenses','Office Supplies','Advertising (FB Ads)','Dine out','Website and Technologies','Miscellaneous'],
+        prevTotals: {}
     };
 }
 function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(settings)); }
@@ -501,6 +547,24 @@ function monthStats() {
     });
     return { income, expense, net: income - expense, rows };
 }
+function allTimeStats() {
+    // Sum all Moneyger data (all time, not filtered by month)
+    let income = 0, expense = 0;
+    const byCat = {};
+    allData.forEach(r => {
+        if (r.type === 'Income') income += r.amount;
+        else if (r.type === 'Exp.') { expense += r.amount; byCat[r.category] = (byCat[r.category]||0) + r.amount; }
+    });
+    // Add previous balances
+    const pt = settings.prevTotals || {};
+    Object.entries(pt).forEach(([cat, amt]) => {
+        const n = parseFloat(amt) || 0;
+        if (n === 0) return;
+        if (settings.incomeCategories.includes(cat)) income += n;
+        else { expense += n; byCat[cat] = (byCat[cat]||0) + n; }
+    });
+    return { income, expense, net: income - expense, byCat };
+}
 function accountBalances() {
     const bal = {};
     settings.accounts.forEach(a => bal[a] = 0);
@@ -557,6 +621,8 @@ function renderDashboard() {
     const { income, expense, net, rows } = monthStats();
     const bd = categoryBreakdown();
     const recent = rows.slice(0, 5);
+    const at = allTimeStats();
+    const hasPrev = Object.keys(settings.prevTotals||{}).some(k => parseFloat(settings.prevTotals[k]));
 
     showContent(`
         <div class="net-card">
@@ -577,6 +643,27 @@ function renderDashboard() {
                 <div class="summary-amount expense">₱${fmt(expense)}</div>
             </div>
         </div>
+
+        ${hasPrev ? `
+        <div class="card" style="margin:0 16px 12px;">
+            <div class="card-title" style="margin-bottom:10px;">All-Time Totals <span style="font-size:11px;font-weight:500;color:#94a3b8;">(incl. previous)</span></div>
+            <div class="summary-grid" style="margin:0;">
+                <div class="summary-card">
+                    <div class="summary-icon">💚</div>
+                    <div class="summary-label">Income</div>
+                    <div class="summary-amount income">₱${fmt(at.income)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">🔴</div>
+                    <div class="summary-label">Expenses</div>
+                    <div class="summary-amount expense">₱${fmt(at.expense)}</div>
+                </div>
+            </div>
+            <div style="text-align:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+                <span style="font-size:12px;color:var(--text-secondary);">Net All-Time: </span>
+                <span style="font-size:15px;font-weight:800;color:${at.net>=0?'var(--income)':'var(--expense)'};">${at.net>=0?'+':''}₱${fmt(at.net)}</span>
+            </div>
+        </div>` : ''}
 
         ${bd.length ? `
         <div class="card">
@@ -743,14 +830,24 @@ function renderAdd() {
 
             <div class="form-group">
                 <label class="form-label">Note <span style="font-weight:400">(optional)</span></label>
-                <input id="f-note" type="text" class="form-input" placeholder="Add a note…"
-                    value="${form.note}">
+                <div class="ac-wrap">
+                    <input id="f-note" type="text" class="form-input" placeholder="Add a note…"
+                        value="${form.note}" autocomplete="off"
+                        oninput="acShow('f-note','ac-note','note')"
+                        onblur="setTimeout(()=>acHide('ac-note'),180)">
+                    <div id="ac-note" class="ac-dropdown"></div>
+                </div>
             </div>
 
             <div class="form-group">
                 <label class="form-label">Description <span style="font-weight:400">(optional)</span></label>
-                <input id="f-description" type="text" class="form-input" placeholder="Additional details…"
-                    value="${form.description}">
+                <div class="ac-wrap">
+                    <input id="f-description" type="text" class="form-input" placeholder="Additional details…"
+                        value="${form.description}" autocomplete="off"
+                        oninput="acShow('f-description','ac-desc','description')"
+                        onblur="setTimeout(()=>acHide('ac-desc'),180)">
+                    <div id="ac-desc" class="ac-dropdown"></div>
+                </div>
             </div>
 
             <div class="form-group">
@@ -878,7 +975,7 @@ function renderSettings() {
 
             <div class="settings-section-title">Accounts</div>
             <div class="settings-card">
-                <div class="settings-item" onclick="editList('accounts','Accounts (one per line)')">
+                <div class="settings-item" onclick="editList('accounts','Manage Accounts')">
                     <span class="settings-label">Manage Accounts</span>
                     <span class="settings-value">${settings.accounts.length} ›</span>
                 </div>
@@ -886,17 +983,47 @@ function renderSettings() {
 
             <div class="settings-section-title">Categories</div>
             <div class="settings-card">
-                <div class="settings-item" onclick="editList('incomeCategories','Income Categories (one per line)')">
+                <div class="settings-item" onclick="editList('incomeCategories','Income Categories')">
                     <span class="settings-label">Income Categories</span>
                     <span class="settings-value">${settings.incomeCategories.length} ›</span>
                 </div>
-                <div class="settings-item" onclick="editList('expenseCategories','Expense Categories (one per line)')">
+                <div class="settings-item" onclick="editList('expenseCategories','Expense Categories')">
                     <span class="settings-label">Expense Categories</span>
                     <span class="settings-value">${settings.expenseCategories.length} ›</span>
                 </div>
             </div>
+
+            <div class="settings-section-title">Previous Balances</div>
+            <div style="padding:0 16px 8px;font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                Transactions before Moneyger. Added to All-Time totals on the dashboard.
+            </div>
+            <div class="settings-card">
+                ${[...settings.incomeCategories.map(c=>({c,type:'income'})), ...settings.expenseCategories.map(c=>({c,type:'expense'}))].map(({c,type})=>`
+                <div class="settings-item" style="gap:12px;">
+                    <span class="settings-label" style="flex:1;font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);">${c}</span>
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:13px;color:var(--text-secondary);">₱</span>
+                        <input type="number" min="0" step="0.01" inputmode="decimal"
+                            value="${parseFloat(settings.prevTotals?.[c])||''}"
+                            placeholder="0"
+                            style="width:110px;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;text-align:right;outline:none;"
+                            onfocus="this.style.borderColor='var(--primary-light)'"
+                            onblur="this.style.borderColor='var(--border)';savePrevTotal('${c.replace(/'/g,"\\'")}',this.value)"
+                            onkeydown="if(event.key==='Enter')this.blur()">
+                    </div>
+                </div>`).join('')}
+            </div>
         </div>
     `);
+}
+
+function savePrevTotal(cat, val) {
+    if (!settings.prevTotals) settings.prevTotals = {};
+    const n = parseFloat(val);
+    if (!val || isNaN(n) || n === 0) delete settings.prevTotals[cat];
+    else settings.prevTotals[cat] = n;
+    saveSettings();
+    showToast('Saved');
 }
 
 function changeScriptUrl() {
@@ -908,12 +1035,85 @@ function changeScriptUrl() {
         loadData();
     }
 }
+// ─── CATEGORY MANAGER MODAL ───────────────────────────
+let _catKey = '';
 function editList(key, label) {
-    const v = prompt(label, settings[key].join('\n'));
-    if (v !== null) {
-        settings[key] = v.split('\n').map(s=>s.trim()).filter(Boolean);
-        saveSettings(); showToast('Updated'); renderSettings();
+    _catKey = key;
+    document.getElementById('cat-title').textContent = label;
+    document.getElementById('cat-new-input').value = '';
+    renderCatList();
+    const ov = document.getElementById('cat-overlay');
+    ov.style.display = 'flex';
+    setTimeout(() => document.getElementById('cat-new-input').focus(), 80);
+}
+function closeCatModal() {
+    document.getElementById('cat-overlay').style.display = 'none';
+    renderSettings();
+}
+function renderCatList() {
+    const items = settings[_catKey];
+    const el = document.getElementById('cat-list');
+    if (!items.length) { el.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:16px;font-size:14px;">No categories yet.</p>'; return; }
+    el.innerHTML = items.map((c,i) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #F1F5F9;">
+            <span style="font-size:14px;color:#1E293B;">${c}</span>
+            <button onclick="removeCatItem(${i})"
+                style="background:none;border:none;color:#EF4444;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;">🗑</button>
+        </div>`).join('');
+}
+function addCatItem() {
+    const inp = document.getElementById('cat-new-input');
+    const val = inp.value.trim();
+    if (!val) return;
+    if (settings[_catKey].includes(val)) { showToast('Already exists'); return; }
+    settings[_catKey].push(val);
+    saveSettings();
+    inp.value = '';
+    renderCatList();
+    showToast('Added');
+}
+function removeCatItem(idx) {
+    settings[_catKey].splice(idx, 1);
+    saveSettings();
+    renderCatList();
+    showToast('Removed');
+}
+
+// ─── AUTOCOMPLETE ─────────────────────────────────────────────────
+function acShow(inputId, dropId, field) {
+    const input = document.getElementById(inputId);
+    const drop  = document.getElementById(dropId);
+    if (!input || !drop) return;
+    const q = input.value.trim().toLowerCase();
+    if (!q) { acHide(dropId); return; }
+
+    // Collect unique values from allData for this field, matching the query
+    const seen = new Set();
+    const matches = [];
+    for (const r of allData) {
+        const val = (r[field] || '').trim();
+        if (val && val.toLowerCase().includes(q) && !seen.has(val)) {
+            seen.add(val);
+            matches.push(val);
+            if (matches.length >= 6) break;
+        }
     }
+
+    if (!matches.length) { acHide(dropId); return; }
+
+    drop.innerHTML = matches.map(m =>
+        `<div class="ac-item" onmousedown="acPick('${inputId}','${dropId}',${JSON.stringify(m)})">${m}</div>`
+    ).join('');
+    drop.classList.add('open');
+}
+function acHide(dropId) {
+    const drop = document.getElementById(dropId);
+    if (drop) drop.classList.remove('open');
+}
+function acPick(inputId, dropId, value) {
+    const input = document.getElementById(inputId);
+    if (input) { input.value = value; input.dispatchEvent(new Event('input')); }
+    acHide(dropId);
 }
 
 // ─── TOAST ────────────────────────────────────────────────────────
