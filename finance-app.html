@@ -864,8 +864,7 @@ function renderAdd() {
                 <div class="ac-wrap">
                     <input id="f-note" type="text" class="form-input" placeholder="Add a note…"
                         value="${form.note}" autocomplete="off"
-                        oninput="acShow('f-note','ac-note','note')"
-                        onblur="setTimeout(()=>acHide('ac-note'),180)">
+                        oninput="acShow('f-note','ac-note','note')">
                     <div id="ac-note" class="ac-dropdown"></div>
                 </div>
             </div>
@@ -875,8 +874,7 @@ function renderAdd() {
                 <div class="ac-wrap">
                     <input id="f-description" type="text" class="form-input" placeholder="Additional details…"
                         value="${form.description}" autocomplete="off"
-                        oninput="acShow('f-description','ac-desc','description')"
-                        onblur="setTimeout(()=>acHide('ac-desc'),180)">
+                        oninput="acShow('f-description','ac-desc','description')">
                     <div id="ac-desc" class="ac-dropdown"></div>
                 </div>
             </div>
@@ -1103,8 +1101,7 @@ function acShow(inputId, dropId, field) {
 
     drop.innerHTML = matches.map(m =>
         `<div class="ac-item"
-            onmousedown="event.preventDefault();acPick('${inputId}','${dropId}',${JSON.stringify(m)})"
-            ontouchend="event.preventDefault();acPick('${inputId}','${dropId}',${JSON.stringify(m)})">${m}</div>`
+            onclick="acPick('${inputId}','${dropId}',${JSON.stringify(m)})">${m}</div>`
     ).join('');
     drop.classList.add('open');
 }
@@ -1114,9 +1111,14 @@ function acHide(dropId) {
 }
 function acPick(inputId, dropId, value) {
     const input = document.getElementById(inputId);
-    if (input) { input.value = value; input.dispatchEvent(new Event('input')); }
+    if (input) { input.value = value; input.focus(); }
     acHide(dropId);
 }
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.ac-wrap')) {
+        document.querySelectorAll('.ac-dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+});
 
 // ─── TOAST ────────────────────────────────────────────────────────
 function showToast(msg) {
