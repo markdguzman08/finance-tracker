@@ -530,6 +530,19 @@ async function apiAppend(row) {
     return data;
 }
 
+async function apiAppendTransfer(outRow, inRow) {
+    // Sends both rows in one GAS call — single write lock, single recalculation
+    const url = SCRIPT_URL
+        + '?action=appendTransfer'
+        + '&data=' + encodeURIComponent(JSON.stringify([outRow, inRow]))
+        + '&t=' + Date.now();
+    const r = await fetch(url, { redirect: 'follow' });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.success) throw new Error('Transfer write failed — check script URL');
+    return data;
+}
+
 async function loadData() {
     showContent('<div style="padding:60px;text-align:center;color:var(--text-secondary)">Loading…</div>');
     try {
@@ -970,8 +983,9 @@ async function saveTransaction(btn) {
                 if (idx  !== -1) allData[idx]  = { ...allData[idx],  period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description, _isPrimary: true, _pairRow: pairRow };
                 if (pIdx !== -1) allData[pIdx] = { ...allData[pIdx], period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description, _paired: true };
             } else {
-                await apiAppend(outRow.slice(0, 6));
-                await apiAppend(inRow.slice(0, 6));
+                // Fire-and-forget — both rows sent in one GAS call, UI updates immediately
+                apiAppendTransfer(outRow.slice(0, 6), inRow.slice(0, 6))
+                    .catch(e => console.warn('Transfer append background:', e.message));
                 const newOut = { _row: null, _isPrimary: true, _pairRow: null, period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description };
                 const newIn  = { _row: null, _paired: true, period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description };
                 allData.push(newOut, newIn);
