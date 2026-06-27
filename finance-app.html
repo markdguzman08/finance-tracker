@@ -399,6 +399,7 @@ let categoryChart = null;
 let recordsFilter  = 'all';
 let recordsSearch  = '';
 let recordsAccount = '';
+let dashBalances   = null;
 
 let settings = loadSettings();
 function loadSettings() {
@@ -422,6 +423,21 @@ function defaultSettings() {
     };
 }
 function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(settings)); }
+
+// Fetch pre-computed balances from DASHBOARD and use them in the Accounts view.
+function loadBalances() {
+    if (!SCRIPT_URL) return;
+    dashBalances = null;
+    fetch(SCRIPT_URL + '?action=getBalances')
+        .then(r => r.json())
+        .then(data => {
+            if (data.balances) {
+                dashBalances = data.balances;
+                if (currentView === 'accounts') renderAccounts();
+            }
+        })
+        .catch(() => {});
+}
 
 // Fetch canonical account list from GAS and update local settings.
 // Called on startup and after URL change so accounts survive cache clears.
@@ -451,6 +467,7 @@ window.addEventListener('load', () => {
         SCRIPT_URL = savedUrl;
         showApp();
         loadData();
+        loadBalances();
         syncAccountsFromGAS();
     } else {
         document.getElementById('setup-screen').style.display = 'flex';
@@ -468,6 +485,7 @@ function saveScriptUrl() {
     SCRIPT_URL = url;
     showApp();
     loadData();
+    loadBalances();
     syncAccountsFromGAS();
 }
 
@@ -666,6 +684,13 @@ function monthStats() {
     return { income, expense, net: income - expense, rows };
 }
 function accountBalances() {
+    // Prefer DASHBOARD balances (Option A) — matches sheet exactly
+    if (dashBalances) {
+        const bal = {};
+        settings.accounts.forEach(a => bal[a] = dashBalances.hasOwnProperty(a) ? Number(dashBalances[a]) : 0);
+        return bal;
+    }
+    // Fallback: compute from Moneyger data only (no opening balance / pre-Moneyger history)
     const bal = {};
     settings.accounts.forEach(a => bal[a] = 0);
     allData.forEach(r => {
@@ -1069,7 +1094,7 @@ function renderSettings() {
                     <span class="settings-label">Apps Script URL</span>
                     <span class="settings-value">Change ›</span>
                 </div>
-                <div class="settings-item" onclick="loadData();showToast('Refreshing…')">
+                <div class="settings-item" onclick="loadData();loadBalances();showToast('Refreshing…')">
                     <span class="settings-label">Refresh Data</span>
                     <span class="settings-value">↻</span>
                 </div>
