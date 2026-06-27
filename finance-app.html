@@ -670,7 +670,7 @@ function accountBalances() {
     settings.accounts.forEach(a => bal[a] = 0);
     allData.forEach(r => {
         if (!r.account) return;
-        if (!bal.hasOwnProperty(r.account)) bal[r.account] = 0;
+        if (!bal.hasOwnProperty(r.account)) return; // skip renamed/unknown accounts
         if (r.type === 'Income'          || r.type === 'Transfer-In')    bal[r.account] += r.amount;
         if (r.type === 'Exp.'            || r.type === 'Transfer-Out')   bal[r.account] -= r.amount;
         if (r.type === 'Opening Balance')                                 bal[r.account] += r.amount;
