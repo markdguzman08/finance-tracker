@@ -423,6 +423,21 @@ function defaultSettings() {
 }
 function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(settings)); }
 
+// Fetch canonical account list from GAS and update local settings.
+// Called on startup and after URL change so accounts survive cache clears.
+function syncAccountsFromGAS() {
+    if (!SCRIPT_URL) return;
+    fetch(SCRIPT_URL + '?action=getAccounts')
+        .then(r => r.json())
+        .then(data => {
+            if (data.accounts && Array.isArray(data.accounts) && data.accounts.length) {
+                settings.accounts = data.accounts;
+                saveSettings();
+            }
+        })
+        .catch(() => {}); // silently keep existing list on failure
+}
+
 let form = resetForm();
 function resetForm(keepAccount) {
     return { date: todayInput(), type: 'Exp.', account: keepAccount || '', category: '', note: '', amount: '', transferAccount: '', description: '' };
@@ -436,6 +451,7 @@ window.addEventListener('load', () => {
         SCRIPT_URL = savedUrl;
         showApp();
         loadData();
+        syncAccountsFromGAS();
     } else {
         document.getElementById('setup-screen').style.display = 'flex';
         document.getElementById('app').style.display = 'none';
@@ -452,6 +468,7 @@ function saveScriptUrl() {
     SCRIPT_URL = url;
     showApp();
     loadData();
+    syncAccountsFromGAS();
 }
 
 function showApp() {
@@ -500,6 +517,7 @@ async function deleteTx(rowNum) {
         const tx = allData.find(r => r._row === rowNum);
         const pairRow = tx?._pairRow || null;
         if (pairRow) {
+            // Delete higher row first so lower row number stays valid
             const hi = Math.max(rowNum, pairRow);
             const lo = Math.min(rowNum, pairRow);
             await apiDelete(hi);
@@ -795,7 +813,7 @@ function txHTML(tx) {
 
 // ─── RECORDS ──────────────────────────────────────────
 function renderRecords() {
-    let rows = monthRows().filter(r => !r._paired);
+    let rows = monthRows().filter(r => !r._paired); // hide paired Transfer-In rows
     if (recordsFilter === 'income')   rows = rows.filter(r => r.type === 'Income');
     if (recordsFilter === 'expense')  rows = rows.filter(r => r.type === 'Exp.');
     if (recordsFilter === 'transfer') rows = rows.filter(r => r.type.includes('Transfer'));
@@ -957,11 +975,11 @@ async function saveTransaction(btn) {
     const transferAccount = (document.getElementById('f-transfer')?.value    || '').trim();
     const date            = document.getElementById('f-date')?.value || form.date;
 
-    if (!account)                                  { showToast('Please select an account'); return; }
-    if (!amount || parseFloat(amount) <= 0)        { showToast('Please enter a valid amount'); return; }
-    if (!isTransfer && !category)                  { showToast('Please select a category'); return; }
-    if (isTransfer && !transferAccount)            { showToast('Please select a To Account'); return; }
-    if (isTransfer && account === transferAccount) { showToast('From and To accounts must be different'); return; }
+    if (!account)                                              { showToast('Please select an account'); return; }
+    if (!amount || parseFloat(amount) <= 0)                    { showToast('Please enter a valid amount'); return; }
+    if (!isTransfer && !category)                              { showToast('Please select a category'); return; }
+    if (isTransfer && !transferAccount)                        { showToast('Please select a To Account'); return; }
+    if (isTransfer && account === transferAccount)             { showToast('From and To accounts must be different'); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Saving…';
@@ -973,8 +991,11 @@ async function saveTransaction(btn) {
 
     try {
         if (isTransfer) {
+            // Transfer-Out row: money leaves `account` going to `transferAccount`
             const outRow = [dateFmt, account, transferAccount, note, amt, 'Transfer-Out', '', '', description];
+            // Transfer-In row: money arrives at `transferAccount` from `account`
             const inRow  = [dateFmt, transferAccount, account, note, amt, 'Transfer-In',  '', '', description];
+
             if (editRow) {
                 await apiUpdate(editRow, outRow);
                 if (pairRow) await apiUpdate(pairRow, inRow);
@@ -1056,6 +1077,10 @@ function renderSettings() {
 
             <div class="settings-section-title">Accounts</div>
             <div class="settings-card">
+                <div class="settings-item" onclick="syncAccountsFromGAS();showToast('Accounts synced from Sheet');setTimeout(renderSettings,600)">
+                    <span class="settings-label">Sync from Sheet</span>
+                    <span class="settings-value">↻</span>
+                </div>
                 <div class="settings-item" onclick="editList('accounts','Manage Accounts')">
                     <span class="settings-label">Manage Accounts</span>
                     <span class="settings-value">${settings.accounts.length} ›</span>
@@ -1171,6 +1196,8 @@ function acPick(inputId, dropId, value) {
     if (input) { input.value = value; input.focus(); }
     acHide(dropId);
 }
+
+// Close all autocomplete dropdowns when tapping outside an ac-wrap
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.ac-wrap')) {
         document.querySelectorAll('.ac-dropdown.open').forEach(d => d.classList.remove('open'));
