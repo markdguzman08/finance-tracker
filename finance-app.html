@@ -1163,7 +1163,7 @@ function renderAccounts() {
     ];
     // Bucket accounts into groups, sorted by balance desc within each group
     const groups = { bankswallets:[], credit:[], savings:[] };
-    Object.entries(bal).forEach(([acc, b]) => groups[acctGroup(acc)].push([acc, b]));
+    Object.entries(bal).forEach(([acc, b]) => { const g = acctGroup(acc); if (groups[g]) groups[g].push([acc, b]); });
     Object.values(groups).forEach(g => g.sort((a,b) => b[1]-a[1]));
 
     const total = Object.values(bal).reduce((s,v) => s+v, 0);
