@@ -409,14 +409,14 @@ let dashBalances   = null;
 let accountsFilter = 'all';
 
 const ACCT_GROUPS_MAP = {
-    savings: new Set(['BPI','MariBank','GSave','Maya Savings','Maya Savings (Tax Fund)','Maya Savings (Products)','PS Bank']),
-    wallets: new Set(['GCASH','Maya Tintak','Paymaya','Shopee Wallet','CASH','Lazada Wallet']),
-    credit:  new Set(['BPI-CC','BPI-CC BETH (270k)'])
+    bankswallets: new Set(['PS Bank','BPI','GCASH','Paymaya','MariBank','Maya Tintak','Shopee Wallet','Lazada Wallet','CASH']),
+    credit:       new Set(['BPI-CC','BPI-CC BETH (270k)']),
+    savings:      new Set(['Maya Savings','Maya Savings (Tax Fund)','Maya Savings (Products)','GSave'])
 };
 function acctGroup(name) {
-    if (ACCT_GROUPS_MAP.savings.has(name)) return 'savings';
-    if (ACCT_GROUPS_MAP.wallets.has(name)) return 'wallets';
-    if (ACCT_GROUPS_MAP.credit.has(name))  return 'credit';
+    if (ACCT_GROUPS_MAP.bankswallets.has(name)) return 'bankswallets';
+    if (ACCT_GROUPS_MAP.credit.has(name))       return 'credit';
+    if (ACCT_GROUPS_MAP.savings.has(name))      return 'savings';
     return 'other';
 }
 
@@ -744,7 +744,7 @@ function liquidBalance() {
     let total = 0;
     Object.entries(dashBalances).forEach(([name, bal]) => {
         const g = acctGroup(name);
-        if (g === 'savings' || g === 'wallets') total += Number(bal);
+        if (g === 'bankswallets') total += Number(bal);
     });
     return total;
 }
@@ -821,7 +821,7 @@ function renderDashboard() {
 
         ${liquid !== null ? `
         <div class="card" style="padding:14px 16px">
-            <div class="card-title">Liquid Assets (Savings + Wallets)</div>
+            <div class="card-title">Liquid Assets</div>
             <div style="font-size:26px;font-weight:800;color:var(--income)">₱${fmt(liquid)}</div>
         </div>` : ''}
 
@@ -1157,18 +1157,19 @@ async function saveTransaction(btn) {
 function renderAccounts() {
     const bal = accountBalances();
     const GROUP_META = [
-        { key:'savings', label:'🏦 Savings & Banks', color:'#1565c0', bg:'#e3f2fd' },
-        { key:'wallets', label:'👛 Wallets & Cash',  color:'#6a1b9a', bg:'#f3e5f5' },
-        { key:'credit',  label:'💳 Credit Cards',    color:'#c62828', bg:'#fce4ec' },
-        { key:'other',   label:'📦 Other',            color:'#37474f', bg:'#eceff1' },
+        { key:'bankswallets', label:'🏦 Banks & Wallets', color:'#1565c0', bg:'#e3f2fd' },
+        { key:'credit',       label:'💳 Credit Cards',    color:'#c62828', bg:'#fce4ec' },
+        { key:'savings',      label:'💰 Savings',         color:'#2e7d32', bg:'#e8f5e9' },
+        { key:'other',        label:'📦 Other',            color:'#37474f', bg:'#eceff1' },
     ];
-    const groups = { savings:[], wallets:[], credit:[], other:[] };
+    // Bucket accounts into groups, sorted by balance desc within each group
+    const groups = { bankswallets:[], credit:[], savings:[], other:[] };
     Object.entries(bal).forEach(([acc, b]) => groups[acctGroup(acc)].push([acc, b]));
     Object.values(groups).forEach(g => g.sort((a,b) => b[1]-a[1]));
 
     const total = Object.values(bal).reduce((s,v) => s+v, 0);
-    const filterKeys = ['all','savings','wallets','credit'];
-    const filterLabels = ['All','Savings','Wallets','Credit'];
+    const filterKeys = ['all','bankswallets','credit','savings'];
+    const filterLabels = ['All','Banks & Wallets','Credit','Savings'];
     const visibleGroups = accountsFilter === 'all'
         ? GROUP_META.filter(m => groups[m.key].length)
         : GROUP_META.filter(m => m.key === accountsFilter && groups[m.key].length);
