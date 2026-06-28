@@ -424,10 +424,13 @@ let settings = loadSettings();
 function loadSettings() {
     try {
         const s = JSON.parse(localStorage.getItem('ft_settings')) || defaultSettings();
+        const def = defaultSettings();
         // Normalize: ensure category/account arrays contain only plain strings (fix corrupt state)
         ['accounts','incomeCategories','expenseCategories'].forEach(key => {
-            if (!Array.isArray(s[key])) s[key] = defaultSettings()[key];
+            if (!Array.isArray(s[key])) s[key] = def[key];
             s[key] = s[key].flatMap(v => String(v).split('\n').map(x=>x.trim())).filter(Boolean);
+            // Merge: add any new defaults not already in stored list (preserves user-added items)
+            def[key].forEach(v => { if (!s[key].includes(v)) s[key].push(v); });
         });
         return s;
     }
@@ -436,9 +439,17 @@ function loadSettings() {
 function defaultSettings() {
     return {
         sheetTab: 'Moneyger',
-        accounts: ['BPI','MariBank','GCASH','CASH','Paymaya','PS Bank'],
-        incomeCategories:  ['Custom Temporary Tattoos','Shopee Sales','Website Sales','Other Income'],
-        expenseCategories: ['Labor','Utilities','Mark Expenses','Office Supplies','Advertising (FB Ads)','Dine out','Website and Technologies','Miscellaneous']
+        accounts: ['BPI','MariBank','GCASH','CASH','Paymaya','PS Bank','Maya Tintak','Shopee Wallet','Lazada Wallet','BPI-CC','BPI-CC BETH (270k)','Maya Savings','Maya Savings (Tax Fund)','Maya Savings (Products)','GSave'],
+        incomeCategories: [
+            'Custom Temporary Tattoos','Shopee Sales','Other Income','Website Sales',
+            'MARK SALARY','Tiktok Sales'
+        ],
+        expenseCategories: [
+            'Mark Expenses','Other Expenses','Website and Technologies','Returns and Other Credits',
+            'Utilities (Internet | Power | Water)','Dine out','Labor','Office Supplies',
+            'Advertising (FB Ads)','Custom Temporary Tattoos','Vehicle Expenses',
+            'Website Order Shipping','Rent','Utilities','Miscellaneous'
+        ]
     };
 }
 function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(settings)); }
