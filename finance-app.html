@@ -190,6 +190,12 @@
         .account-item:last-child { border-bottom: none; }
         .account-name    { font-size: 14px; font-weight: 600; }
         .account-balance { font-size: 16px; font-weight: 800; }
+        .acct-group-hdr {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0; margin-top: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .acct-group-hdr:first-child { margin-top: 0; }
 
         /* ── FORM ── */
         .form-section { padding: 16px; }
@@ -400,6 +406,19 @@ let recordsFilter  = 'all';
 let recordsSearch  = '';
 let recordsAccount = '';
 let dashBalances   = null;
+let accountsFilter = 'all';
+
+const ACCT_GROUPS_MAP = {
+    savings: new Set(['BPI','MariBank','GSave','Maya Savings','Maya Savings (Tax Fund)','Maya Savings (Products)','PS Bank']),
+    wallets: new Set(['GCASH','Maya Tintak','Paymaya','Shopee Wallet','CASH','Lazada Wallet']),
+    credit:  new Set(['BPI-CC','BPI-CC BETH (270k)'])
+};
+function acctGroup(name) {
+    if (ACCT_GROUPS_MAP.savings.has(name)) return 'savings';
+    if (ACCT_GROUPS_MAP.wallets.has(name)) return 'wallets';
+    if (ACCT_GROUPS_MAP.credit.has(name))  return 'credit';
+    return 'other';
+}
 
 let settings = loadSettings();
 function loadSettings() {
@@ -702,6 +721,33 @@ function accountBalances() {
     });
     return bal;
 }
+// Returns last 12 calendar months (oldest→newest) with income, expense, net per month
+function last12Stats() {
+    const now = new Date();
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({ year: d.getFullYear(), month: d.getMonth(), income: 0, expense: 0 });
+    }
+    allData.forEach(r => {
+        const d = parseSheetDate(r.period);
+        if (!d) return;
+        const slot = months.find(m => m.year === d.getFullYear() && m.month === d.getMonth());
+        if (!slot) return;
+        if (r.type === 'Income') slot.income += r.amount;
+        else if (r.type === 'Exp.') slot.expense += r.amount;
+    });
+    return months.map(m => ({ ...m, net: m.income - m.expense }));
+}
+function liquidBalance() {
+    if (!dashBalances) return null;
+    let total = 0;
+    Object.entries(dashBalances).forEach(([name, bal]) => {
+        const g = acctGroup(name);
+        if (g === 'savings' || g === 'wallets') total += Number(bal);
+    });
+    return total;
+}
 function categoryBreakdown() {
     const rows = monthRows();
     const bd = {};
@@ -743,10 +789,15 @@ function changeMonth(dir) {
 }
 
 // ─── DASHBOARD ────────────────────────────────────────
+let trendChart = null;
 function renderDashboard() {
     const { income, expense, net, rows } = monthStats();
     const bd = categoryBreakdown();
     const recent = rows.slice(0, 5);
+    const trend = last12Stats();
+    const liquid = liquidBalance();
+    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const trendLabels = trend.map(m => MONTHS_SHORT[m.month]);
 
     showContent(`
         <div class="net-card">
@@ -766,6 +817,22 @@ function renderDashboard() {
                 <div class="summary-label">Expenses</div>
                 <div class="summary-amount expense">₱${fmt(expense)}</div>
             </div>
+        </div>
+
+        ${liquid !== null ? `
+        <div class="card" style="padding:14px 16px">
+            <div class="card-title">Liquid Assets (Savings + Wallets)</div>
+            <div style="font-size:26px;font-weight:800;color:var(--income)">₱${fmt(liquid)}</div>
+        </div>` : ''}
+
+        <div class="card">
+            <div class="card-title">Gross Income — Last 12 Months</div>
+            <div class="chart-container"><canvas id="income-chart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Net Income — Last 12 Months</div>
+            <div class="chart-container"><canvas id="net-chart"></canvas></div>
         </div>
 
         ${bd.length ? `
@@ -790,8 +857,39 @@ function renderDashboard() {
         </div>
     `);
 
-    if (bd.length) {
-        setTimeout(() => {
+    setTimeout(() => {
+        const incEl = document.getElementById('income-chart');
+        if (incEl) {
+            new Chart(incEl, {
+                type: 'bar',
+                data: {
+                    labels: trendLabels,
+                    datasets: [{ data: trend.map(m => m.income), backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 5, borderSkipped: false }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ₱' + fmt(ctx.parsed.y) } } },
+                    scales: { y: { ticks: { callback: v => '₱' + (v>=1000?(v/1000).toFixed(0)+'k':v) }, grid: { color:'#F1F5F9' } }, x: { grid: { display:false } } }
+                }
+            });
+        }
+        const netEl = document.getElementById('net-chart');
+        if (netEl) {
+            const netData = trend.map(m => m.net);
+            new Chart(netEl, {
+                type: 'bar',
+                data: {
+                    labels: trendLabels,
+                    datasets: [{ data: netData, backgroundColor: netData.map(v => v >= 0 ? 'rgba(16,185,129,0.75)' : 'rgba(239,68,68,0.75)'), borderRadius: 5, borderSkipped: false }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ₱' + fmt(ctx.parsed.y) } } },
+                    scales: { y: { ticks: { callback: v => '₱' + (v>=1000?(v/1000).toFixed(0)+'k':v) }, grid: { color:'#F1F5F9' } }, x: { grid: { display:false } } }
+                }
+            });
+        }
+        if (bd.length) {
             const el = document.getElementById('cat-chart');
             if (!el) return;
             if (categoryChart) categoryChart.destroy();
@@ -803,14 +901,11 @@ function renderDashboard() {
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false, cutout: '62%',
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => ` ₱${fmt(ctx.parsed)}` } }
-                    }
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ₱${fmt(ctx.parsed)}` } } }
                 }
             });
-        }, 0);
-    }
+        }
+    }, 0);
 }
 
 function txHTML(tx) {
@@ -1060,27 +1155,57 @@ async function saveTransaction(btn) {
 
 // ─── ACCOUNTS ─────────────────────────────────────────
 function renderAccounts() {
-    const bal    = accountBalances();
-    const sorted = Object.entries(bal).sort((a,b)=>b[1]-a[1]);
-    const total  = sorted.reduce((s,[,v])=>s+v, 0);
+    const bal = accountBalances();
+    const GROUP_META = [
+        { key:'savings', label:'🏦 Savings & Banks', color:'#1565c0', bg:'#e3f2fd' },
+        { key:'wallets', label:'👛 Wallets & Cash',  color:'#6a1b9a', bg:'#f3e5f5' },
+        { key:'credit',  label:'💳 Credit Cards',    color:'#c62828', bg:'#fce4ec' },
+        { key:'other',   label:'📦 Other',            color:'#37474f', bg:'#eceff1' },
+    ];
+    const groups = { savings:[], wallets:[], credit:[], other:[] };
+    Object.entries(bal).forEach(([acc, b]) => groups[acctGroup(acc)].push([acc, b]));
+    Object.values(groups).forEach(g => g.sort((a,b) => b[1]-a[1]));
 
-    showContent(`
-        <div class="view-header">Account Balances</div>
-        <div style="padding:0 16px 6px;font-size:13px;color:var(--text-secondary)">All-time running balance</div>
-        <div class="card" style="margin-bottom:16px">
-            ${sorted.map(([acc,b])=>`
+    const total = Object.values(bal).reduce((s,v) => s+v, 0);
+    const filterKeys = ['all','savings','wallets','credit'];
+    const filterLabels = ['All','Savings','Wallets','Credit'];
+    const visibleGroups = accountsFilter === 'all'
+        ? GROUP_META.filter(m => groups[m.key].length)
+        : GROUP_META.filter(m => m.key === accountsFilter && groups[m.key].length);
+
+    const groupHTML = visibleGroups.map(meta => {
+        const items = groups[meta.key];
+        const subtotal = items.reduce((s,[,v]) => s+v, 0);
+        return `
+            <div class="acct-group-hdr" style="border-left:4px solid ${meta.color};background:${meta.bg};margin:0 -16px;padding:8px 16px">
+                <span style="color:${meta.color};font-weight:700;font-size:13px">${meta.label}</span>
+                <span style="color:${meta.color};font-weight:700;font-size:13px">${subtotal<0?'-':''}₱${fmt(Math.abs(subtotal))}</span>
+            </div>
+            ${items.map(([acc,b]) => `
                 <div class="account-item" onclick="recordsAccount='${acc}';navigate('records')" style="cursor:pointer">
                     <div class="account-name">${acc}</div>
                     <div class="account-balance" style="color:${b>=0?'var(--income)':'var(--expense)'}">
                         ${b<0?'-':''}₱${fmt(Math.abs(b))}
                     </div>
-                </div>`).join('')}
+                </div>`).join('')}`;
+    }).join('');
+
+    showContent(`
+        <div class="view-header">Account Balances</div>
+        <div class="records-filter" style="padding:8px 16px 4px">
+            ${filterKeys.map((f,i) => `
+                <button class="filter-chip ${accountsFilter===f?'active':''}"
+                    onclick="accountsFilter='${f}';renderAccounts()">${filterLabels[i]}</button>`).join('')}
+        </div>
+        <div class="card" style="margin-bottom:16px;overflow:hidden">
+            ${groupHTML}
+            ${accountsFilter==='all' ? `
             <div class="account-item" style="border-top:2px solid var(--border);margin-top:4px;padding-top:14px">
                 <div class="account-name" style="font-size:15px">Total Net Worth</div>
                 <div class="account-balance" style="font-size:18px;color:${total>=0?'var(--income)':'var(--expense)'}">
                     ${total<0?'-':''}₱${fmt(Math.abs(total))}
                 </div>
-            </div>
+            </div>` : ''}
         </div>`);
 }
 
