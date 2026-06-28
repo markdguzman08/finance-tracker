@@ -1160,10 +1160,9 @@ function renderAccounts() {
         { key:'bankswallets', label:'🏦 Banks & Wallets', color:'#1565c0', bg:'#e3f2fd' },
         { key:'credit',       label:'💳 Credit Cards',    color:'#c62828', bg:'#fce4ec' },
         { key:'savings',      label:'💰 Savings',         color:'#2e7d32', bg:'#e8f5e9' },
-        { key:'other',        label:'📦 Other',            color:'#37474f', bg:'#eceff1' },
     ];
     // Bucket accounts into groups, sorted by balance desc within each group
-    const groups = { bankswallets:[], credit:[], savings:[], other:[] };
+    const groups = { bankswallets:[], credit:[], savings:[] };
     Object.entries(bal).forEach(([acc, b]) => groups[acctGroup(acc)].push([acc, b]));
     Object.values(groups).forEach(g => g.sort((a,b) => b[1]-a[1]));
 
