@@ -396,6 +396,7 @@ const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 const CHART_COLORS= ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#14B8A6'];
 
 let SCRIPT_URL = '';
+const GAS_SECRET = 'YPX9E_YMIfzmNM4KQ0XKimRjJz4';
 
 // ─── STATE ───────────────────────────────────────────
 let allData       = [];
@@ -458,7 +459,7 @@ function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(set
 function loadBalances() {
     if (!SCRIPT_URL) return;
     dashBalances = null;
-    fetch(SCRIPT_URL + '?action=getBalances')
+    fetch(SCRIPT_URL + '?action=getBalances&secret=' + GAS_SECRET)
         .then(r => r.json())
         .then(data => {
             if (data.balances) {
@@ -473,7 +474,7 @@ function loadBalances() {
 // Called on startup and after URL change so accounts survive cache clears.
 function syncAccountsFromGAS() {
     if (!SCRIPT_URL) return;
-    fetch(SCRIPT_URL + '?action=getAccounts')
+    fetch(SCRIPT_URL + '?action=getAccounts&secret=' + GAS_SECRET)
         .then(r => r.json())
         .then(data => {
             if (data.accounts && Array.isArray(data.accounts) && data.accounts.length) {
@@ -527,7 +528,7 @@ function showApp() {
 
 // ─── API ─────────────────────────────────────────────
 async function apiGet() {
-    const url = SCRIPT_URL + '?t=' + Date.now();
+    const url = SCRIPT_URL + '?secret=' + GAS_SECRET + '&t=' + Date.now();
     const r = await fetch(url, { redirect: 'follow' });
     const data = await r.json();
     if (data.error) throw new Error(data.error);
@@ -537,6 +538,7 @@ async function apiGet() {
 async function apiUpdate(rowNum, row) {
     const url = SCRIPT_URL
         + '?action=update'
+        + '&secret=' + GAS_SECRET
         + '&row=' + rowNum
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
@@ -550,6 +552,7 @@ async function apiUpdate(rowNum, row) {
 async function apiDelete(rowNum) {
     const url = SCRIPT_URL
         + '?action=delete'
+        + '&secret=' + GAS_SECRET
         + '&row=' + rowNum
         + '&t=' + Date.now();
     const r = await fetch(url, { redirect: 'follow' });
@@ -570,14 +573,13 @@ async function deleteTx(rowNum) {
             const lo = Math.min(rowNum, pairRow);
             await apiDelete(hi);
             await apiDelete(lo);
-            allData = allData.filter(r => r._row !== rowNum && r._row !== pairRow);
         } else {
             await apiDelete(rowNum);
-            allData = allData.filter(r => r._row !== rowNum);
         }
         showToast('🗑 Deleted');
         form = resetForm();
         navigate('records');
+        loadData(); // Re-fetch to get fresh _row indices after row shift
     } catch(e) {
         showToast('❌ ' + e.message);
     }
@@ -587,6 +589,7 @@ async function apiAppend(row) {
     // Use GET with URL params — avoids POST→GET redirect issue with GAS exec URL
     const url = SCRIPT_URL
         + '?action=append'
+        + '&secret=' + GAS_SECRET
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
     const r = await fetch(url, { redirect: 'follow' });
@@ -600,6 +603,7 @@ async function apiAppendTransfer(outRow, inRow) {
     // Sends both rows in one GAS call — single write lock, single recalculation
     const url = SCRIPT_URL
         + '?action=appendTransfer'
+        + '&secret=' + GAS_SECRET
         + '&data=' + encodeURIComponent(JSON.stringify([outRow, inRow]))
         + '&t=' + Date.now();
     const r = await fetch(url, { redirect: 'follow' });
@@ -869,13 +873,18 @@ function renderDashboard() {
     `);
 
     setTimeout(() => {
+        // Gross Income chart
         const incEl = document.getElementById('income-chart');
         if (incEl) {
             new Chart(incEl, {
                 type: 'bar',
                 data: {
                     labels: trendLabels,
-                    datasets: [{ data: trend.map(m => m.income), backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 5, borderSkipped: false }]
+                    datasets: [{
+                        data: trend.map(m => m.income),
+                        backgroundColor: 'rgba(16,185,129,0.75)',
+                        borderRadius: 5, borderSkipped: false
+                    }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
@@ -884,6 +893,8 @@ function renderDashboard() {
                 }
             });
         }
+
+        // Net Income chart
         const netEl = document.getElementById('net-chart');
         if (netEl) {
             const netData = trend.map(m => m.net);
@@ -891,15 +902,21 @@ function renderDashboard() {
                 type: 'bar',
                 data: {
                     labels: trendLabels,
-                    datasets: [{ data: netData, backgroundColor: netData.map(v => v >= 0 ? 'rgba(16,185,129,0.75)' : 'rgba(239,68,68,0.75)'), borderRadius: 5, borderSkipped: false }]
+                    datasets: [{
+                        data: netData,
+                        backgroundColor: netData.map(v => v >= 0 ? 'rgba(16,185,129,0.75)' : 'rgba(239,68,68,0.75)'),
+                        borderRadius: 5, borderSkipped: false
+                    }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ₱' + fmt(ctx.parsed.y) } } },
-                    scales: { y: { ticks: { callback: v => '₱' + (v>=1000?(v/1000).toFixed(0)+'k':v) }, grid: { color:'#F1F5F9' } }, x: { grid: { display:false } } }
+                    scales: { y: { ticks: { callback: v => '₱' + (v>=1000?(v/1000).toFixed(0)+'k':v>=−1000?(v/1000).toFixed(0)+'k':v) }, grid: { color:'#F1F5F9' } }, x: { grid: { display:false } } }
                 }
             });
         }
+
+        // Category doughnut chart
         if (bd.length) {
             const el = document.getElementById('cat-chart');
             if (!el) return;
@@ -912,7 +929,10 @@ function renderDashboard() {
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false, cutout: '62%',
-                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ₱${fmt(ctx.parsed)}` } } }
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => ` ₱${fmt(ctx.parsed)}` } }
+                    }
                 }
             });
         }
@@ -1137,7 +1157,7 @@ async function saveTransaction(btn) {
             } else {
                 // Fire-and-forget — both rows sent in one GAS call, UI updates immediately
                 apiAppendTransfer(outRow.slice(0, 6), inRow.slice(0, 6))
-                    .catch(e => console.warn('Transfer append background:', e.message));
+                    .catch(e => { showToast('⚠️ Transfer not saved — check connection'); console.warn('Transfer append:', e.message); });
                 const newOut = { _row: null, _isPrimary: true, _pairRow: null, period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description };
                 const newIn  = { _row: null, _paired: true, period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description };
                 allData.push(newOut, newIn);
@@ -1149,7 +1169,7 @@ async function saveTransaction(btn) {
                 const idx = allData.findIndex(r => r._row === editRow);
                 if (idx !== -1) allData[idx] = { ...allData[idx], period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description };
             } else {
-                apiAppend(row.slice(0, 6)).catch(e => console.warn('Append background:', e.message));
+                apiAppend(row.slice(0, 6)).catch(e => { showToast('⚠️ Not saved — check connection'); console.warn('Append:', e.message); });
                 allData.push({ _row: null, period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description });
             }
         }
@@ -1188,7 +1208,7 @@ function renderAccounts() {
         const items = groups[meta.key];
         const subtotal = items.reduce((s,[,v]) => s+v, 0);
         return `
-            <div class="acct-group-hdr" style="border-left:4px solid ${meta.color};background:${meta.bg};margin:0 -16px;padding:8px 16px">
+            <div class="acct-group-hdr" style="border-left:4px solid ${meta.color};padding-left:10px;background:${meta.bg};margin:0 -16px;padding:8px 16px">
                 <span style="color:${meta.color};font-weight:700;font-size:13px">${meta.label}</span>
                 <span style="color:${meta.color};font-weight:700;font-size:13px">${subtotal<0?'-':''}₱${fmt(Math.abs(subtotal))}</span>
             </div>
