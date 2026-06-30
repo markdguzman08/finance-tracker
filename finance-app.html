@@ -911,7 +911,7 @@ function renderDashboard() {
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ₱' + fmt(ctx.parsed.y) } } },
-                    scales: { y: { ticks: { callback: v => '₱' + (v>=1000?(v/1000).toFixed(0)+'k':v>=−1000?(v/1000).toFixed(0)+'k':v) }, grid: { color:'#F1F5F9' } }, x: { grid: { display:false } } }
+                    scales: { y: { ticks: { callback: v => '₱' + (v>=1000?(v/1000).toFixed(0)+'k':v>=-1000?(v/1000).toFixed(0)+'k':v) }, grid: { color:'#F1F5F9' } }, x: { grid: { display:false } } }
                 }
             });
         }
