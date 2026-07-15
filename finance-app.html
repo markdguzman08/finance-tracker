@@ -643,7 +643,7 @@ async function loadData() {
                 inn.account === out.transferAccount &&
                 inn.transferAccount === out.account
             );
-            if (match) { out._pairRow = match._row; match._paired = true; }
+            if (match) { out._pairRow = match._row; match._paired = true; match._pairRow = out._row; }
         });
         renderCurrentView();
     } catch(e) {
@@ -675,6 +675,11 @@ function sheetDateToInput(period) {
 function editTx(rowNum) {
     const tx = allData.find(r => r._row === rowNum);
     if (!tx) return;
+    if (tx.type === 'Transfer-In') {
+        // Edit the transfer via its Transfer-Out (primary) row
+        if (tx._pairRow) return editTx(tx._pairRow);
+        showToast('Edit this transfer from the source account'); return;
+    }
     form = {
         _editRow:        rowNum,
         _pairRow:        tx._pairRow || null,
@@ -942,9 +947,11 @@ function renderDashboard() {
 function txHTML(tx) {
     const isIncome   = tx.type === 'Income';
     const isTransfer = tx.type === 'Transfer-Out' || tx.type === 'Transfer-In';
+    const isXferIn   = tx.type === 'Transfer-In';
     const cls  = isIncome ? 'income' : isTransfer ? 'transfer' : 'expense';
+    const amtCls = isXferIn ? 'income' : cls;   // incoming transfers show green
     const icon = isIncome ? '💚' : isTransfer ? '🔄' : '🔴';
-    const sign = isIncome ? '+' : isTransfer ? '' : '-';
+    const sign = (isIncome || isXferIn) ? '+' : isTransfer ? '' : '-';
     const label = tx.type === 'Transfer-Out' ? `${tx.account} → ${tx.transferAccount}`
                 : tx.type === 'Transfer-In'  ? `${tx.transferAccount} → ${tx.account}`
                 : (tx.category || tx.type);
@@ -956,7 +963,7 @@ function txHTML(tx) {
                 <div class="tx-meta">${[tx.note, tx.description, ...(isTransfer ? [] : [tx.account])].filter(Boolean).join(' · ')}</div>
             </div>
             <div class="tx-right">
-                <div class="tx-amount ${cls}">${sign}₱${fmt(tx.amount)}</div>
+                <div class="tx-amount ${amtCls}">${sign}₱${fmt(tx.amount)}</div>
                 <div class="tx-date">${tx.period}</div>
             </div>
         </div>`;
@@ -964,11 +971,14 @@ function txHTML(tx) {
 
 // ─── RECORDS ──────────────────────────────────────────
 function renderRecords() {
-    let rows = monthRows().filter(r => !r._paired); // hide paired Transfer-In rows
+    let rows = monthRows();
+    // Account filter keeps paired Transfer-In rows so incoming transfers show on the receiving account;
+    // without an account filter, hide paired Transfer-In rows (one entry per transfer)
+    if (recordsAccount) rows = rows.filter(r => r.account === recordsAccount);
+    else                rows = rows.filter(r => !r._paired);
     if (recordsFilter === 'income')   rows = rows.filter(r => r.type === 'Income');
     if (recordsFilter === 'expense')  rows = rows.filter(r => r.type === 'Exp.');
     if (recordsFilter === 'transfer') rows = rows.filter(r => r.type.includes('Transfer'));
-    if (recordsAccount) rows = rows.filter(r => r.account === recordsAccount);
     if (recordsSearch) {
         const q = recordsSearch.toLowerCase();
         rows = rows.filter(r =>
@@ -1153,7 +1163,7 @@ async function saveTransaction(btn) {
                 const idx  = allData.findIndex(r => r._row === editRow);
                 const pIdx = allData.findIndex(r => r._row === pairRow);
                 if (idx  !== -1) allData[idx]  = { ...allData[idx],  period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description, _isPrimary: true, _pairRow: pairRow };
-                if (pIdx !== -1) allData[pIdx] = { ...allData[pIdx], period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description, _paired: true };
+                if (pIdx !== -1) allData[pIdx] = { ...allData[pIdx], period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description, _paired: true, _pairRow: editRow };
             } else {
                 // Fire-and-forget — both rows sent in one GAS call, UI updates immediately
                 apiAppendTransfer(outRow.slice(0, 6), inRow.slice(0, 6))
