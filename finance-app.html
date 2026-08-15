@@ -614,7 +614,9 @@ async function apiAppendTransfer(outRow, inRow) {
 }
 
 async function loadData() {
-    showContent('<div style="padding:60px;text-align:center;color:var(--text-secondary)">Loading…</div>');
+    // Loads silently in the background — never blanks the current view with a
+    // "Loading…" screen, and never re-renders over the Add form while the user
+    // is typing (that used to wipe in-progress input once the fetch resolved).
     try {
         const data = await apiGet();
         allData = (data.values || []).map((r, i) => {
@@ -645,9 +647,13 @@ async function loadData() {
             );
             if (match) { out._pairRow = match._row; match._paired = true; match._pairRow = out._row; }
         });
-        renderCurrentView();
+        if (currentView !== 'add') renderCurrentView(); // don't clobber in-progress input
     } catch(e) {
-        showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
+        if (currentView !== 'add') {
+            showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
+        } else {
+            showToast('⚠️ Failed to refresh data');
+        }
     }
 }
 
@@ -705,13 +711,22 @@ function todayInput() {
 
 // ─── DATA HELPERS ─────────────────────────────────────
 function monthRows() {
-    return allData.filter(r => {
-        const d = parseSheetDate(r.period);
-        return d && d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
-    }).sort((a, b) => {
-        const da = parseSheetDate(a.period), db = parseSheetDate(b.period);
-        return db - da; // newest first
-    });
+    // Track each row's original position in allData (its insertion/append order)
+    // so that same-day transactions sort with the most recently entered one on
+    // top, instead of in whatever order they happen to appear in the sheet.
+    return allData
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => {
+            const d = parseSheetDate(r.period);
+            return d && d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
+        })
+        .sort((a, b) => {
+            const da = parseSheetDate(a.r.period), db = parseSheetDate(b.r.period);
+            const dateDiff = db - da;
+            if (dateDiff !== 0) return dateDiff; // newest date first
+            return b.i - a.i; // same date: most recently entered first
+        })
+        .map(({ r }) => r);
 }
 function monthStats() {
     const rows = monthRows();
@@ -1035,6 +1050,13 @@ function renderAdd() {
                 </div>
             </div>` : ''}
             <div class="form-group">
+                <label class="form-label">Amount (₱)</label>
+                <input id="f-amount" type="number" class="form-input" placeholder="0.00"
+                    value="${form.amount}" step="0.01" min="0" inputmode="decimal"
+                    style="font-size:22px;font-weight:800">
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">Type</label>
                 <div class="type-selector">
                     ${[['Exp.','Expense'],['Income','Income'],['Transfer','Transfer']].map(([v,l])=>`
@@ -1096,13 +1118,6 @@ function renderAdd() {
                         oninput="acShow('f-description','ac-desc','description')">
                     <div id="ac-desc" class="ac-dropdown"></div>
                 </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Amount (₱)</label>
-                <input id="f-amount" type="number" class="form-input" placeholder="0.00"
-                    value="${form.amount}" step="0.01" min="0" inputmode="decimal"
-                    style="font-size:22px;font-weight:800">
             </div>
 
             <button class="submit-btn" id="save-btn" onclick="saveTransaction(this)">
