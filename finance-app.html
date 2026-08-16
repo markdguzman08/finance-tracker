@@ -381,6 +381,7 @@
             <input id="cat-new-input" type="text" placeholder="New category name…"
                 style="flex:1;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:14px;outline:none;"
                 onkeydown="if(event.key==='Enter')addCatItem()" />
+            <select id="cat-new-group" style="display:none;padding:10px 8px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:14px;outline:none;background:#fff;"></select>
             <button onclick="addCatItem()"
                 style="padding:10px 18px;background:#1E40AF;color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">Add</button>
         </div>
@@ -414,7 +415,16 @@ const ACCT_GROUPS_MAP = {
     credit:       new Set(['BPI-CC','BPI-CC BETH (270k)']),
     savings:      new Set(['Maya Savings','Maya Savings (Tax Fund)','Maya Savings (Products)','GSave'])
 };
+// Shared group metadata — used by both the Accounts view and the Manage Accounts editor.
+const ACCOUNT_GROUP_META = [
+    { key:'bankswallets', label:'🏦 Banks & Wallets', color:'#1565c0', bg:'#e3f2fd' },
+    { key:'credit',       label:'💳 Credit Cards',    color:'#c62828', bg:'#fce4ec' },
+    { key:'savings',      label:'💰 Savings',         color:'#2e7d32', bg:'#e8f5e9' },
+];
+// Resolves an account's group. Checks the user-editable settings.accountGroups map first
+// (set via Manage Accounts), then falls back to the built-in defaults above.
 function acctGroup(name) {
+    if (settings && settings.accountGroups && settings.accountGroups[name]) return settings.accountGroups[name];
     if (ACCT_GROUPS_MAP.bankswallets.has(name)) return 'bankswallets';
     if (ACCT_GROUPS_MAP.credit.has(name))       return 'credit';
     if (ACCT_GROUPS_MAP.savings.has(name))      return 'savings';
@@ -433,6 +443,9 @@ function loadSettings() {
             // Merge: add any new defaults not already in stored list (preserves user-added items)
             def[key].forEach(v => { if (!s[key].includes(v)) s[key].push(v); });
         });
+        // Merge account group assignments: keep any user edits, add new defaults for accounts not yet assigned
+        if (typeof s.accountGroups !== 'object' || s.accountGroups === null || Array.isArray(s.accountGroups)) s.accountGroups = {};
+        Object.entries(def.accountGroups).forEach(([acc, g]) => { if (!s.accountGroups[acc]) s.accountGroups[acc] = g; });
         return s;
     }
     catch(e) { return defaultSettings(); }
@@ -441,6 +454,9 @@ function defaultSettings() {
     return {
         sheetTab: 'Moneyger',
         accounts: ['BPI','MariBank','GCASH','CASH','Paymaya','PS Bank','Maya Tintak','Shopee Wallet','Lazada Wallet','BPI-CC','BPI-CC BETH (270k)','Maya Savings','Maya Savings (Tax Fund)','Maya Savings (Products)','GSave'],
+        // Account → group assignments made via Manage Accounts (or seeded here for known new accounts).
+        // Keys not present here fall back to the built-in ACCT_GROUPS_MAP in acctGroup().
+        accountGroups: { 'Manny Loan': 'credit' },
         incomeCategories: [
             'Custom Temporary Tattoos','Shopee Sales','Other Income','Website Sales',
             'MARK SALARY','Tiktok Sales'
@@ -479,6 +495,10 @@ function syncAccountsFromGAS() {
         .then(data => {
             if (data.accounts && Array.isArray(data.accounts) && data.accounts.length) {
                 settings.accounts = data.accounts;
+                // Any account with no group yet (new to the sheet, not seeded, not user-assigned)
+                // defaults to Banks & Wallets so it still shows up on the Accounts tab instead of
+                // silently disappearing into the unrendered "other" bucket.
+                settings.accounts.forEach(a => { if (acctGroup(a) === 'other') settings.accountGroups[a] = 'bankswallets'; });
                 saveSettings();
             }
         })
@@ -1212,11 +1232,7 @@ async function saveTransaction(btn) {
 // ─── ACCOUNTS ─────────────────────────────────────────
 function renderAccounts() {
     const bal = accountBalances();
-    const GROUP_META = [
-        { key:'bankswallets', label:'🏦 Banks & Wallets', color:'#1565c0', bg:'#e3f2fd' },
-        { key:'credit',       label:'💳 Credit Cards',    color:'#c62828', bg:'#fce4ec' },
-        { key:'savings',      label:'💰 Savings',         color:'#2e7d32', bg:'#e8f5e9' },
-    ];
+    const GROUP_META = ACCOUNT_GROUP_META;
     // Bucket accounts into groups, sorted by balance desc within each group
     const groups = { bankswallets:[], credit:[], savings:[] };
     Object.entries(bal).forEach(([acc, b]) => { const g = acctGroup(acc); if (groups[g]) groups[g].push([acc, b]); });
@@ -1324,6 +1340,14 @@ function editList(key, label) {
     _catKey = key;
     document.getElementById('cat-title').textContent = label;
     document.getElementById('cat-new-input').value = '';
+    document.getElementById('cat-new-input').placeholder = key === 'accounts' ? 'New account name…' : 'New category name…';
+    const groupSel = document.getElementById('cat-new-group');
+    if (key === 'accounts') {
+        groupSel.innerHTML = ACCOUNT_GROUP_META.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
+        groupSel.style.display = '';
+    } else {
+        groupSel.style.display = 'none';
+    }
     renderCatList();
     const ov = document.getElementById('cat-overlay');
     ov.style.display = 'flex';
@@ -1336,13 +1360,24 @@ function closeCatModal() {
 function renderCatList() {
     const items = settings[_catKey];
     const el = document.getElementById('cat-list');
+    const isAccounts = _catKey === 'accounts';
     if (!items.length) { el.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:16px;font-size:14px;">No categories yet.</p>'; return; }
     el.innerHTML = items.map((c,i) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #F1F5F9;">
-            <span style="font-size:14px;color:#1E293B;">${c}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 4px;border-bottom:1px solid #F1F5F9;">
+            <span style="font-size:14px;color:#1E293B;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c}</span>
+            ${isAccounts ? `
+            <select onchange="setAccountGroup('${c.replace(/'/g,"\\'")}', this.value)"
+                style="padding:6px 6px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;background:#fff;outline:none;">
+                ${ACCOUNT_GROUP_META.map(m => `<option value="${m.key}" ${acctGroup(c)===m.key?'selected':''}>${m.label}</option>`).join('')}
+            </select>` : ''}
             <button onclick="removeCatItem(${i})"
-                style="background:none;border:none;color:#EF4444;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;">🗑</button>
+                style="background:none;border:none;color:#EF4444;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;flex-shrink:0;">🗑</button>
         </div>`).join('');
+}
+function setAccountGroup(name, group) {
+    settings.accountGroups[name] = group;
+    saveSettings();
+    showToast('Moved to ' + (ACCOUNT_GROUP_META.find(m=>m.key===group)||{}).label);
 }
 function addCatItem() {
     const inp = document.getElementById('cat-new-input');
@@ -1350,13 +1385,19 @@ function addCatItem() {
     if (!val) return;
     if (settings[_catKey].includes(val)) { showToast('Already exists'); return; }
     settings[_catKey].push(val);
+    if (_catKey === 'accounts') {
+        const group = document.getElementById('cat-new-group').value;
+        settings.accountGroups[val] = group;
+    }
     saveSettings();
     inp.value = '';
     renderCatList();
     showToast('Added');
 }
 function removeCatItem(idx) {
+    const removed = settings[_catKey][idx];
     settings[_catKey].splice(idx, 1);
+    if (_catKey === 'accounts' && removed) delete settings.accountGroups[removed];
     saveSettings();
     renderCatList();
     showToast('Removed');
@@ -1426,4 +1467,4 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </body>
-</html>
+</html>
