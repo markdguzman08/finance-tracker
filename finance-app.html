@@ -76,6 +76,8 @@
             color: white; font-size: 18px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
         }
+        .header-actions { display: flex; align-items: center; gap: 8px; }
+        .avatar-btn.spinning { animation: spin 0.7s linear infinite; }
 
         /* ── MONTH SELECTOR ── */
         .month-selector {
@@ -338,7 +340,10 @@
                 <div class="header-title" id="header-title">Dashboard</div>
                 <div class="header-subtitle">Finance Tracker</div>
             </div>
-            <button class="avatar-btn" onclick="navigate('settings')">⚙️</button>
+            <div class="header-actions">
+                <button class="avatar-btn" id="refresh-btn" onclick="refreshData(this)">↻</button>
+                <button class="avatar-btn" onclick="navigate('settings')">⚙️</button>
+            </div>
         </div>
     </div>
 
@@ -474,9 +479,7 @@ function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(set
 // Fetch pre-computed balances from DASHBOARD and use them in the Accounts view.
 function loadBalances() {
     if (!SCRIPT_URL) return;
-    dashBalances = null;
-    fetch(SCRIPT_URL + '?action=getBalances&secret=' + GAS_SECRET)
-        .then(r => r.json())
+    fetchJson(SCRIPT_URL + '?action=getBalances&secret=' + GAS_SECRET)
         .then(data => {
             if (data.balances) {
                 dashBalances = data.balances;
@@ -490,8 +493,7 @@ function loadBalances() {
 // Called on startup and after URL change so accounts survive cache clears.
 function syncAccountsFromGAS() {
     if (!SCRIPT_URL) return;
-    fetch(SCRIPT_URL + '?action=getAccounts&secret=' + GAS_SECRET)
-        .then(r => r.json())
+    fetchJson(SCRIPT_URL + '?action=getAccounts&secret=' + GAS_SECRET)
         .then(data => {
             if (data.accounts && Array.isArray(data.accounts) && data.accounts.length) {
                 settings.accounts = data.accounts;
@@ -547,12 +549,47 @@ function showApp() {
 }
 
 // ─── API ─────────────────────────────────────────────
+// Every call goes through fetchJson. Reason: Safari/WebKit (i.e. the iPhone
+// PWA) throws "The string did not match the expected pattern." out of
+// response.json() whenever the body isn't valid JSON — and Google Apps Script
+// intermittently answers with an HTML page (a redirect hop, a "script is
+// busy" page) instead of our JSON, most often on the read that immediately
+// follows a write. The request almost always succeeds a moment later, so
+// retry quietly before bothering the user, and if it really can't be read,
+// report it in plain English instead of WebKit's cryptic wording.
+function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+async function fetchJson(url, attempts = 3) {
+    let lastErr = null;
+    for (let i = 0; i < attempts; i++) {
+        if (i > 0) await sleep(i === 1 ? 400 : 1200);   // brief backoff between tries
+        try {
+            const r    = await fetch(url, { redirect: 'follow' });
+            const text = (await r.text()).trim();
+            if (!text)          throw new Error('Google sent back an empty response');
+            if (text[0] === '<') throw new Error('Google sent back a web page instead of data');
+            let data;
+            try { data = JSON.parse(text); }
+            catch (_) { throw new Error("Google's response could not be read"); }
+            if (data.error) {
+                // A genuine error from Code.gs — retrying would fail identically,
+                // so surface it straight away.
+                const err = new Error(data.error);
+                err.fromServer = true;
+                throw err;
+            }
+            return data;
+        } catch (e) {
+            if (e.fromServer) throw e;
+            lastErr = e;
+        }
+    }
+    throw new Error(lastErr ? lastErr.message : 'Could not reach Google Sheets');
+}
+
 async function apiGet() {
     const url = SCRIPT_URL + '?secret=' + GAS_SECRET + '&t=' + Date.now();
-    const r = await fetch(url, { redirect: 'follow' });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+    return await fetchJson(url);
 }
 
 async function apiUpdate(rowNum, row) {
@@ -562,9 +599,7 @@ async function apiUpdate(rowNum, row) {
         + '&row=' + rowNum
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
-    const r = await fetch(url, { redirect: 'follow' });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
+    const data = await fetchJson(url);
     if (!data.success) throw new Error('Update did not confirm');
     return data;
 }
@@ -575,9 +610,7 @@ async function apiDelete(rowNum) {
         + '&secret=' + GAS_SECRET
         + '&row=' + rowNum
         + '&t=' + Date.now();
-    const r = await fetch(url, { redirect: 'follow' });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
+    const data = await fetchJson(url);
     if (!data.success) throw new Error('Delete did not confirm');
     return data;
 }
@@ -612,9 +645,7 @@ async function apiAppend(row) {
         + '&secret=' + GAS_SECRET
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
-    const r = await fetch(url, { redirect: 'follow' });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
+    const data = await fetchJson(url);
     if (!data.success) throw new Error('Sheet write did not confirm — check script URL');
     return data;
 }
@@ -626,11 +657,21 @@ async function apiAppendTransfer(outRow, inRow) {
         + '&secret=' + GAS_SECRET
         + '&data=' + encodeURIComponent(JSON.stringify([outRow, inRow]))
         + '&t=' + Date.now();
-    const r = await fetch(url, { redirect: 'follow' });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
+    const data = await fetchJson(url);
     if (!data.success) throw new Error('Transfer write failed — check script URL');
     return data;
+}
+
+// Global refresh button (header, every tab) — spins while fetching, then toasts.
+async function refreshData(btn) {
+    if (btn) btn.classList.add('spinning');
+    loadBalances();
+    try {
+        const ok = await loadData();
+        if (ok) showToast('Refreshed');
+    } finally {
+        if (btn) btn.classList.remove('spinning');
+    }
 }
 
 async function loadData() {
@@ -668,12 +709,18 @@ async function loadData() {
             if (match) { out._pairRow = match._row; match._paired = true; match._pairRow = out._row; }
         });
         if (currentView !== 'add') renderCurrentView(); // don't clobber in-progress input
+        return true;
     } catch(e) {
-        if (currentView !== 'add') {
+        // Only take over the screen when there is genuinely nothing to show.
+        // If rows are already on screen they're still valid (a save writes to
+        // the sheet before this refresh runs), so a failed background refresh
+        // should be a quiet toast, not a full-page error that hides good data.
+        if (allData.length === 0 && currentView !== 'add') {
             showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
         } else {
-            showToast('⚠️ Failed to refresh data');
+            showToast('⚠️ Couldn’t refresh — showing last loaded data');
         }
+        return false;
     }
 }
 
@@ -1194,11 +1241,23 @@ async function saveTransaction(btn) {
 
             if (editRow) {
                 await apiUpdate(editRow, outRow);
-                if (pairRow) await apiUpdate(pairRow, inRow);
-                const idx  = allData.findIndex(r => r._row === editRow);
-                const pIdx = allData.findIndex(r => r._row === pairRow);
-                if (idx  !== -1) allData[idx]  = { ...allData[idx],  period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description, _isPrimary: true, _pairRow: pairRow };
-                if (pIdx !== -1) allData[pIdx] = { ...allData[pIdx], period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description, _paired: true, _pairRow: editRow };
+                if (pairRow) {
+                    // Was already a transfer — update its existing paired row too.
+                    await apiUpdate(pairRow, inRow);
+                    const idx  = allData.findIndex(r => r._row === editRow);
+                    const pIdx = allData.findIndex(r => r._row === pairRow);
+                    if (idx  !== -1) allData[idx]  = { ...allData[idx],  period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description, _isPrimary: true, _pairRow: pairRow };
+                    if (pIdx !== -1) allData[pIdx] = { ...allData[pIdx], period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description, _paired: true, _pairRow: editRow };
+                } else {
+                    // Converting a non-transfer row into a transfer: the row being edited
+                    // becomes Transfer-Out, but there's no paired Transfer-In row yet —
+                    // it must be created, not just skipped.
+                    await apiAppend(inRow.slice(0, 6));
+                    const idx = allData.findIndex(r => r._row === editRow);
+                    if (idx !== -1) allData[idx] = { ...allData[idx], period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description, _isPrimary: true, _pairRow: null };
+                    allData.push({ _row: null, _paired: true, period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description });
+                    loadData(); // background refresh so the new row's real _row/_pairRow settle in
+                }
             } else {
                 // Fire-and-forget — both rows sent in one GAS call, UI updates immediately
                 apiAppendTransfer(outRow.slice(0, 6), inRow.slice(0, 6))
@@ -1211,8 +1270,14 @@ async function saveTransaction(btn) {
             const row = [dateFmt, account, category, note, amt, form.type, '', '', description];
             if (editRow) {
                 await apiUpdate(editRow, row);
+                if (pairRow) {
+                    // Was a transfer, now isn't — its paired row is no longer valid, remove it.
+                    await apiDelete(pairRow);
+                    allData = allData.filter(r => r._row !== pairRow);
+                    loadData(); // background refresh so row numbers settle after the shift
+                }
                 const idx = allData.findIndex(r => r._row === editRow);
-                if (idx !== -1) allData[idx] = { ...allData[idx], period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description };
+                if (idx !== -1) allData[idx] = { ...allData[idx], period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description, _pairRow: null, _isPrimary: false, _paired: false };
             } else {
                 apiAppend(row.slice(0, 6)).catch(e => { showToast('⚠️ Not saved — check connection'); console.warn('Append:', e.message); });
                 allData.push({ _row: null, period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description });
