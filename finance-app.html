@@ -479,7 +479,7 @@ function saveSettings() { localStorage.setItem('ft_settings', JSON.stringify(set
 // Fetch pre-computed balances from DASHBOARD and use them in the Accounts view.
 function loadBalances() {
     if (!SCRIPT_URL) return;
-    fetchJson(SCRIPT_URL + '?action=getBalances&secret=' + GAS_SECRET)
+    fetchJson(SCRIPT_URL + '?action=getBalances&secret=' + GAS_SECRET, READ_ATTEMPTS, READ_TIMEOUT)
         .then(data => {
             if (data.balances) {
                 dashBalances = data.balances;
@@ -493,7 +493,7 @@ function loadBalances() {
 // Called on startup and after URL change so accounts survive cache clears.
 function syncAccountsFromGAS() {
     if (!SCRIPT_URL) return;
-    fetchJson(SCRIPT_URL + '?action=getAccounts&secret=' + GAS_SECRET)
+    fetchJson(SCRIPT_URL + '?action=getAccounts&secret=' + GAS_SECRET, READ_ATTEMPTS, READ_TIMEOUT)
         .then(data => {
             if (data.accounts && Array.isArray(data.accounts) && data.accounts.length) {
                 settings.accounts = data.accounts;
@@ -559,7 +559,17 @@ function showApp() {
 // report it in plain English instead of WebKit's cryptic wording.
 function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
-async function fetchJson(url, attempts = 3, timeoutMs = 8000) {
+// Reads only. Writes deliberately use fetchJson's safe defaults (one attempt).
+const READ_ATTEMPTS = 3;
+const READ_TIMEOUT  = 8000;
+
+// IMPORTANT: the defaults here are the SAFE ones — a single attempt and a long
+// deadline. Only reads may opt into retries, by passing them explicitly.
+// Retrying a write is how duplicate rows got into the sheet: Apps Script often
+// answers a write with an HTML body, or slowly, even though the row was already
+// written, so a "failed" write that gets resent appends the row a second time.
+// A write is not idempotent. Never give one more than one attempt.
+async function fetchJson(url, attempts = 1, timeoutMs = 30000) {
     let lastErr = null;
     for (let i = 0; i < attempts; i++) {
         if (i > 0) await sleep(i === 1 ? 400 : 1200);   // brief backoff between tries
@@ -599,7 +609,7 @@ async function fetchJson(url, attempts = 3, timeoutMs = 8000) {
 
 async function apiGet() {
     const url = SCRIPT_URL + '?secret=' + GAS_SECRET + '&t=' + Date.now();
-    return await fetchJson(url);
+    return await fetchJson(url, READ_ATTEMPTS, READ_TIMEOUT);   // read — safe to retry
 }
 
 async function apiUpdate(rowNum, row) {
@@ -609,7 +619,7 @@ async function apiUpdate(rowNum, row) {
         + '&row=' + rowNum
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
-    const data = await fetchJson(url);
+    const data = await fetchJson(url, 1);   // WRITE — one attempt only, never retry
     if (!data.success) throw new Error('Update did not confirm');
     return data;
 }
@@ -620,7 +630,7 @@ async function apiDelete(rowNum) {
         + '&secret=' + GAS_SECRET
         + '&row=' + rowNum
         + '&t=' + Date.now();
-    const data = await fetchJson(url);
+    const data = await fetchJson(url, 1);   // WRITE — one attempt only, never retry
     if (!data.success) throw new Error('Delete did not confirm');
     return data;
 }
@@ -655,7 +665,7 @@ async function apiAppend(row) {
         + '&secret=' + GAS_SECRET
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
-    const data = await fetchJson(url);
+    const data = await fetchJson(url, 1);   // WRITE — one attempt only, never retry
     if (!data.success) throw new Error('Sheet write did not confirm — check script URL');
     return data;
 }
@@ -667,7 +677,7 @@ async function apiAppendTransfer(outRow, inRow) {
         + '&secret=' + GAS_SECRET
         + '&data=' + encodeURIComponent(JSON.stringify([outRow, inRow]))
         + '&t=' + Date.now();
-    const data = await fetchJson(url);
+    const data = await fetchJson(url, 1);   // WRITE — one attempt only, never retry
     if (!data.success) throw new Error('Transfer write failed — check script URL');
     return data;
 }
@@ -1275,7 +1285,7 @@ async function saveTransaction(btn) {
             } else {
                 // Fire-and-forget — both rows sent in one GAS call, UI updates immediately
                 apiAppendTransfer(outRow.slice(0, 6), inRow.slice(0, 6))
-                    .catch(e => { showToast('⚠️ Transfer not saved — check connection'); console.warn('Transfer append:', e.message); });
+                    .catch(e => { showToast('⚠️ Transfer may not have saved — check the sheet before re-entering'); console.warn('Transfer append:', e.message); });
                 const newOut = { _row: null, _isPrimary: true, _pairRow: null, period: dateFmt, account, transferAccount, note, amount: amt, type: 'Transfer-Out', category: '', description };
                 const newIn  = { _row: null, _paired: true, period: dateFmt, account: transferAccount, transferAccount: account, note, amount: amt, type: 'Transfer-In', category: '', description };
                 allData.push(newOut, newIn);
@@ -1293,7 +1303,7 @@ async function saveTransaction(btn) {
                 const idx = allData.findIndex(r => r._row === editRow);
                 if (idx !== -1) allData[idx] = { ...allData[idx], period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description, _pairRow: null, _isPrimary: false, _paired: false };
             } else {
-                apiAppend(row.slice(0, 6)).catch(e => { showToast('⚠️ Not saved — check connection'); console.warn('Append:', e.message); });
+                apiAppend(row.slice(0, 6)).catch(e => { showToast('⚠️ May not have saved — check the sheet before re-entering'); console.warn('Append:', e.message); });
                 allData.push({ _row: null, period: dateFmt, account, category, note, amount: amt, type: form.type, transferAccount: '', description });
             }
         }
