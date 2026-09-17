@@ -1,5 +1,5 @@
 // Finance Tracker — Service Worker
-const CACHE = 'finance-v7';
+const CACHE = 'finance-v8';
 const ASSETS = ['./finance-app.html', './manifest.json'];
 
 self.addEventListener('install', e => {
@@ -15,8 +15,15 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-    // Pass Google API calls straight through (always need fresh data, never cached)
-    if (e.request.url.includes('googleapis.com') || e.request.url.includes('accounts.google.com')) {
+    // Only ever handle the app's own files. Everything cross-origin goes straight
+    // to the network, untouched and uncached — above all the Apps Script calls to
+    // script.google.com. Those were previously falling through to the caching
+    // branch below, and since each one carries a unique cache-busting timestamp,
+    // every single sheet read was stored as a brand new cache entry that could
+    // never be reused: the phone's cache grew without limit.
+    let sameOrigin = false;
+    try { sameOrigin = new URL(e.request.url).origin === self.location.origin; } catch (_) {}
+    if (!sameOrigin || e.request.method !== 'GET') {
         return;
     }
     // Network-first for the app shell: always try to fetch the latest finance-app.html
