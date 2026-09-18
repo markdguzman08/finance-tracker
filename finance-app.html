@@ -559,6 +559,10 @@ function showApp() {
 // report it in plain English instead of WebKit's cryptic wording.
 function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
+// Shown in Settings → App Version, so it's always possible to tell which build a
+// device is actually running. Bump this whenever finance-app.html is shipped.
+const APP_VERSION = '2026.09.18';
+
 // Reads only. Writes deliberately use fetchJson's safe defaults (one attempt).
 const READ_ATTEMPTS = 3;
 const READ_TIMEOUT  = 8000;
@@ -1383,6 +1387,10 @@ function renderSettings() {
                 <div class="settings-item" onclick="loadData();loadBalances();showToast('Refreshing…')">
                     <span class="settings-label">Refresh Data</span>
                     <span class="settings-value">↻</span>
+                </div>
+                <div class="settings-item" style="cursor:default">
+                    <span class="settings-label">App Version</span>
+                    <span class="settings-value">${APP_VERSION}</span>
                 </div>
             </div>
 
