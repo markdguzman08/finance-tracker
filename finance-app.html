@@ -561,7 +561,7 @@ function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
 // Shown in Settings → App Version, so it's always possible to tell which build a
 // device is actually running. Bump this whenever finance-app.html is shipped.
-const APP_VERSION = '2026.09.18';
+const APP_VERSION = '2026.09.18b';
 
 // Reads only. Writes deliberately use fetchJson's safe defaults (one attempt).
 const READ_ATTEMPTS = 3;
@@ -662,11 +662,22 @@ async function deleteTx(rowNum) {
     }
 }
 
-async function apiAppend(row) {
+// Builds a column-G key in the same shape the Apps Script uses:
+// "<Type>-<timestamp ms>-<4 digits>". Generated ONCE per save and sent with the
+// write, so if that write ever reaches the sheet more than once the script
+// recognises the repeat and refuses to add a second row. Two genuinely separate
+// but identical entries get different keys, so both are still written.
+function newRowKey(type) {
+    const rand = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    return String(type || 'Row') + '-' + Date.now() + '-' + rand;
+}
+
+async function apiAppend(row, gid) {
     // Use GET with URL params — avoids POST→GET redirect issue with GAS exec URL
     const url = SCRIPT_URL
         + '?action=append'
         + '&secret=' + GAS_SECRET
+        + '&gid=' + encodeURIComponent(gid || newRowKey(row[5]))
         + '&data=' + encodeURIComponent(JSON.stringify({ row }))
         + '&t=' + Date.now();
     const data = await fetchJson(url, 1);   // WRITE — one attempt only, never retry
@@ -674,11 +685,13 @@ async function apiAppend(row) {
     return data;
 }
 
-async function apiAppendTransfer(outRow, inRow) {
+async function apiAppendTransfer(outRow, inRow, gid, gid2) {
     // Sends both rows in one GAS call — single write lock, single recalculation
     const url = SCRIPT_URL
         + '?action=appendTransfer'
         + '&secret=' + GAS_SECRET
+        + '&gid='  + encodeURIComponent(gid  || newRowKey(outRow[5]))
+        + '&gid2=' + encodeURIComponent(gid2 || newRowKey(inRow[5]))
         + '&data=' + encodeURIComponent(JSON.stringify([outRow, inRow]))
         + '&t=' + Date.now();
     const data = await fetchJson(url, 1);   // WRITE — one attempt only, never retry
