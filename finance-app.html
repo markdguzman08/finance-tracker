@@ -610,7 +610,7 @@ function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
 // Shown in Settings → App Version, so it's always possible to tell which build a
 // device is actually running. Bump this whenever finance-app.html is shipped.
-const APP_VERSION = '2026.09.29';
+const APP_VERSION = '2026.09.29b';
 
 // Reads only. Writes deliberately use fetchJson's safe defaults (one attempt).
 // The deadline is per attempt and an attempt that hits it starts over from
@@ -618,8 +618,14 @@ const APP_VERSION = '2026.09.29';
 // 8s: a cold Apps Script start plus the full Moneyger read often takes longer
 // than that, so every attempt was cut off just before it would have finished
 // and the app gave up after ~30s with "Google took too long to respond".
-const READ_ATTEMPTS = 2;
-const READ_TIMEOUT  = 25000;
+//
+// Measured 29 Sep 2026: the full read (≈2,500 rows, ≈270 KB) takes ~2.3s from
+// a PC. So a read that is still hanging after 10s is not "slow", it is stuck —
+// typically iOS reusing a dead connection left over from when the app was in
+// the background. Cut it loose early and try again on a fresh request, with a
+// much longer allowance on the later tries in case the network really is slow.
+const READ_ATTEMPTS = 3;
+const READ_TIMEOUT  = [10000, 20000, 30000];   // per attempt
 
 // IMPORTANT: the defaults here are the SAFE ones — a single attempt and a long
 // deadline. Only reads may opt into retries, by passing them explicitly.
@@ -627,19 +633,30 @@ const READ_TIMEOUT  = 25000;
 // answers a write with an HTML body, or slowly, even though the row was already
 // written, so a "failed" write that gets resent appends the row a second time.
 // A write is not idempotent. Never give one more than one attempt.
-async function fetchJson(url, attempts = 1, timeoutMs = 30000) {
+// Timing of the most recent main sheet read, attempt by attempt — shown under
+// the error message and in Settings → Last Load, so a slow phone can be
+// diagnosed from a screenshot instead of guessed at.
+let lastLoadLog = '';
+try { lastLoadLog = localStorage.getItem('ft_last_load') || ''; } catch (_) {}
+
+async function fetchJson(url, attempts = 1, timeoutMs = 30000, log = null) {
     let lastErr = null;
     for (let i = 0; i < attempts; i++) {
-        if (i > 0) await sleep(i === 1 ? 400 : 1200);   // brief backoff between tries
+        if (i > 0) await sleep(i === 1 ? 300 : 1000);   // brief backoff between tries
+        const limit = Array.isArray(timeoutMs) ? timeoutMs[Math.min(i, timeoutMs.length - 1)] : timeoutMs;
+        const t0 = Date.now();
+        let tHead = null;
         // fetch() has no built-in deadline: if the network stalls instead of
         // answering, it never settles and the caller waits forever (which left
         // the refresh button spinning with no way out). Give each attempt a hard
         // ceiling and treat a timeout as just another retryable failure.
         const ctrl  = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), limit) : null;
         try {
-            const r    = await fetch(url, { redirect: 'follow', signal: ctrl ? ctrl.signal : undefined });
+            const r    = await fetch(url, { redirect: 'follow', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
+            tHead = Date.now() - t0;
             const text = (await r.text()).trim();
+            if (log) log.push(`#${i+1} ok ${sec(Date.now()-t0)} (reply started ${sec(tHead)}, ${Math.round(text.length/1024)} KB)`);
             if (!text)          throw new Error('Google sent back an empty response');
             if (text[0] === '<') throw new Error('Google sent back a web page instead of data');
             let data;
@@ -654,6 +671,12 @@ async function fetchJson(url, attempts = 1, timeoutMs = 30000) {
             }
             return data;
         } catch (e) {
+            if (log) {
+                const what = (e && e.name === 'AbortError')
+                    ? (tHead === null ? 'no reply' : `reply started ${sec(tHead)} but not finished`)
+                    : (e && e.message) || 'error';
+                log.push(`#${i+1} failed ${sec(Date.now()-t0)} — ${what}`);
+            }
             if (e.fromServer) throw e;
             lastErr = (e && e.name === 'AbortError')
                 ? new Error('Google took too long to respond')
@@ -665,9 +688,18 @@ async function fetchJson(url, attempts = 1, timeoutMs = 30000) {
     throw new Error(lastErr ? lastErr.message : 'Could not reach Google Sheets');
 }
 
+function sec(ms) { return (ms / 1000).toFixed(1) + 's'; }
+
 async function apiGet() {
     const url = SCRIPT_URL + '?secret=' + GAS_SECRET + '&t=' + Date.now();
-    return await fetchJson(url, READ_ATTEMPTS, READ_TIMEOUT);   // read — safe to retry
+    const log = [];
+    const stamp = new Date().toLocaleString('en-PH', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    try {
+        return await fetchJson(url, READ_ATTEMPTS, READ_TIMEOUT, log);   // read — safe to retry
+    } finally {
+        lastLoadLog = stamp + ' · ' + (navigator.onLine === false ? 'offline · ' : '') + log.join(' · ');
+        try { localStorage.setItem('ft_last_load', lastLoadLog); } catch (_) {}
+    }
 }
 
 async function apiUpdate(rowNum, row) {
@@ -790,7 +822,7 @@ async function loadData() {
         // the sheet before this refresh runs), so a failed background refresh
         // should be a quiet toast, not a full-page error that hides good data.
         if (allData.length === 0 && currentView !== 'add') {
-            showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
+            showContent(`<div class="empty-state"><div class="empty-icon">⚠️</div><div>${e.message}</div><div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.5">${lastLoadLog}</div><br><button onclick="loadData()" style="padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer">Retry</button></div>`);
         } else {
             showToast('⚠️ Couldn’t refresh — showing last loaded data');
         }
@@ -1472,6 +1504,10 @@ function renderSettings() {
                 <div class="settings-item" style="cursor:default">
                     <span class="settings-label">App Version</span>
                     <span class="settings-value">${APP_VERSION}</span>
+                </div>
+                <div class="settings-item" style="cursor:default;flex-direction:column;align-items:flex-start;gap:4px">
+                    <span class="settings-label">Last Load</span>
+                    <span style="font-size:11px;color:var(--text-secondary);line-height:1.5">${lastLoadLog || '—'}</span>
                 </div>
             </div>
 
